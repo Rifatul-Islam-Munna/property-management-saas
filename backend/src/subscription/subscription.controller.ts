@@ -52,7 +52,7 @@ export class SubscriptionController {
   }
 
   @Post()
-  @Roles(UserRole.ADMIN, UserRole.TETENTWONER)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.TETENTWONER)
   async createSubscription(
     @Req() req: ExpressRequest,
     @Body() dto: CreateSubscriptionDto,

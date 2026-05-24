@@ -113,6 +113,10 @@ type SubscriptionPayload = {
   organizationId: string
   planId: string
   billingInterval: "monthly" | "yearly"
+  ownerUserId?: string
+  status?: "pending" | "active" | "cancelled" | "expired"
+  currentPeriodStart?: string
+  currentPeriodEnd?: string
 }
 
 type ToggleEntityVariables = {

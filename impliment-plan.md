@@ -329,6 +329,8 @@ Frontend dashboard foundation:
 - hero title now moved to top-centered layout to avoid awkward heavy left text stack
 - admin dashboard controls now split into dedicated routed pages, same pattern as tenant owner
 - admin/fallback plan creation UIs now hide raw Paddle ids and explain automatic sync instead
+- admin can now assign subscriptions directly to tenant-owner users with custom start/end dates and status
+- subscription create now syncs owner subscription flags plus organization subscription status/limits
 
 Backend auth additions:
 - fixed default super admin seed on boot: `test@gmail.com` / `11111111`

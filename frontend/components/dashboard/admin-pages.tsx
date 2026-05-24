@@ -96,9 +96,12 @@ function OrgBoundNote({ enabled }: { enabled: boolean }) {
 export function AdminUsersPage() {
   const users = useUsersQuery()
   const organizations = useOrganizationsQuery()
+  const plans = usePlansQuery()
   const createTenantOwner = useCreateTenantOwnerMutation()
+  const createSubscription = useCreateSubscriptionMutation()
   const userList = Array.isArray(users.data) ? users.data : []
   const orgList = Array.isArray(organizations.data) ? organizations.data : []
+  const planList = Array.isArray(plans.data) ? plans.data : []
   const [form, setForm] = useState({
     fullName: "",
     email: "",
@@ -107,6 +110,42 @@ export function AdminUsersPage() {
     organizationId: "",
     jobTitle: "",
   })
+  const [subscriptionForms, setSubscriptionForms] = useState<Record<string, {
+    planId: string
+    billingInterval: "monthly" | "yearly"
+    status: "pending" | "active" | "cancelled" | "expired"
+    currentPeriodStart: string
+    currentPeriodEnd: string
+  }>>({})
+
+  function getSubscriptionForm(userId: string) {
+    return subscriptionForms[userId] ?? {
+      planId: "",
+      billingInterval: "monthly",
+      status: "active",
+      currentPeriodStart: "",
+      currentPeriodEnd: "",
+    }
+  }
+
+  function setSubscriptionForm(
+    userId: string,
+    nextValue: Partial<{
+      planId: string
+      billingInterval: "monthly" | "yearly"
+      status: "pending" | "active" | "cancelled" | "expired"
+      currentPeriodStart: string
+      currentPeriodEnd: string
+    }>
+  ) {
+    setSubscriptionForms((current) => ({
+      ...current,
+      [userId]: {
+        ...getSubscriptionForm(userId),
+        ...nextValue,
+      },
+    }))
+  }
 
   return (
     <div className="space-y-6 px-4 lg:px-6">
@@ -158,8 +197,69 @@ export function AdminUsersPage() {
                   <div className="flex flex-wrap items-center gap-2">
                     <p className="font-medium text-slate-950">{user.fullName}</p>
                     <Badge variant="outline">{user.role}</Badge>
+                    {user.subscriptionActive ? <Badge className="bg-emerald-600">{user.subscriptionTier ?? "active plan"}</Badge> : null}
                   </div>
                   <p className="mt-2 text-sm text-slate-600">{user.email}</p>
+                  {user.organizationId ? <p className="mt-1 text-xs text-slate-500">Org: {user.organizationId}</p> : null}
+
+                  {user.role === "tetentwoner" ? (
+                    <div className="mt-4 rounded-2xl border border-blue-100 bg-blue-50/40 p-4">
+                      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                        <div>
+                          <p className="text-sm font-medium text-slate-950">Assign subscription</p>
+                          <p className="text-xs text-slate-600">Pick plan + month range for this tenant owner.</p>
+                        </div>
+                      </div>
+                      <div className="grid gap-3 md:grid-cols-2">
+                        <Field>
+                          <FieldLabel>Plan</FieldLabel>
+                          <Select value={getSubscriptionForm(user.id).planId} onValueChange={(value) => setSubscriptionForm(user.id, { planId: value ?? "" })}>
+                            <SelectTrigger className="w-full"><SelectValue placeholder="Select plan" /></SelectTrigger>
+                            <SelectContent><SelectGroup>{planList.map((plan) => <SelectItem key={plan._id} value={plan._id}>{plan.name}</SelectItem>)}</SelectGroup></SelectContent>
+                          </Select>
+                        </Field>
+                        <Field>
+                          <FieldLabel>Billing</FieldLabel>
+                          <Select value={getSubscriptionForm(user.id).billingInterval} onValueChange={(value) => setSubscriptionForm(user.id, { billingInterval: (value ?? "monthly") as "monthly" | "yearly" })}>
+                            <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                            <SelectContent><SelectGroup>{["monthly", "yearly"].map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}</SelectGroup></SelectContent>
+                          </Select>
+                        </Field>
+                        <Field>
+                          <FieldLabel>Status</FieldLabel>
+                          <Select value={getSubscriptionForm(user.id).status} onValueChange={(value) => setSubscriptionForm(user.id, { status: (value ?? "active") as "pending" | "active" | "cancelled" | "expired" })}>
+                            <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                            <SelectContent><SelectGroup>{["active", "pending", "cancelled", "expired"].map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}</SelectGroup></SelectContent>
+                          </Select>
+                        </Field>
+                        <Field>
+                          <FieldLabel>Start date (Optional)</FieldLabel>
+                          <Input type="date" value={getSubscriptionForm(user.id).currentPeriodStart} onChange={(event) => setSubscriptionForm(user.id, { currentPeriodStart: event.target.value ?? "" })} />
+                        </Field>
+                        <Field>
+                          <FieldLabel>End date (Optional)</FieldLabel>
+                          <Input type="date" value={getSubscriptionForm(user.id).currentPeriodEnd} onChange={(event) => setSubscriptionForm(user.id, { currentPeriodEnd: event.target.value ?? "" })} />
+                        </Field>
+                      </div>
+                      <div className="mt-3">
+                        <Button
+                          size="sm"
+                          disabled={createSubscription.isPending || !(user.organizationId ?? "") || !getSubscriptionForm(user.id).planId}
+                          onClick={() => createSubscription.mutate({
+                            organizationId: user.organizationId ?? "",
+                            ownerUserId: user.id,
+                            planId: getSubscriptionForm(user.id).planId,
+                            billingInterval: getSubscriptionForm(user.id).billingInterval,
+                            status: getSubscriptionForm(user.id).status,
+                            currentPeriodStart: getSubscriptionForm(user.id).currentPeriodStart || undefined,
+                            currentPeriodEnd: getSubscriptionForm(user.id).currentPeriodEnd || undefined,
+                          })}
+                        >
+                          Assign subscription
+                        </Button>
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
               )) : <Empty><EmptyHeader><EmptyMedia variant="icon"><Users /></EmptyMedia><EmptyTitle>No users</EmptyTitle><EmptyDescription>Users will show here.</EmptyDescription></EmptyHeader></Empty>}
             </CardContent>
@@ -570,43 +670,55 @@ export function AdminTechniciansPage() {
 }
 
 export function AdminSubscriptionsPage() {
-  const { data: me } = useMeQuery()
+  const users = useUsersQuery()
   const organizations = useOrganizationsQuery()
   const plans = usePlansQuery()
   const subscriptions = useSubscriptionsQuery()
   const createSubscription = useCreateSubscriptionMutation()
-  const canUseOrgScopedRoutes = Boolean(me?.organizationId ?? "")
+  const userList = Array.isArray(users.data) ? users.data : []
   const organizationList = Array.isArray(organizations.data) ? organizations.data : []
   const planList = Array.isArray(plans.data) ? plans.data : []
   const subscriptionList = Array.isArray(subscriptions.data) ? subscriptions.data : []
+  const tenantOwnerList = userList.filter((user) => user.role === "tetentwoner")
   const [form, setForm] = useState({
     organizationId: "",
+    ownerUserId: "",
     planId: "",
     billingInterval: "monthly",
+    status: "active",
+    currentPeriodStart: "",
+    currentPeriodEnd: "",
   })
 
   return (
     <div className="space-y-6 px-4 lg:px-6">
-      <AdminPageHero icon={CreditCard} badge="Subscriptions" title="Subscriptions" body="Attach plan to organization and monitor billing records from dedicated page." />
+      <AdminPageHero icon={CreditCard} badge="Subscriptions" title="Subscriptions" body="Attach plan to organization or tenant owner and set custom month/date range from admin panel." />
       <div className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
         <Card className="shadow-none">
-          <CardHeader><CardTitle>Create subscription</CardTitle><CardDescription>Bind plan to organization.</CardDescription></CardHeader>
+          <CardHeader><CardTitle>Create subscription</CardTitle><CardDescription>Bind plan to organization with owner and custom start/end date if needed.</CardDescription></CardHeader>
           <CardContent>
             <form className="space-y-4" onSubmit={(event) => {
               event.preventDefault()
               createSubscription.mutate({
                 organizationId: form.organizationId,
+                ownerUserId: form.ownerUserId || undefined,
                 planId: form.planId,
                 billingInterval: form.billingInterval as "monthly" | "yearly",
+                status: form.status as "pending" | "active" | "cancelled" | "expired",
+                currentPeriodStart: form.currentPeriodStart || undefined,
+                currentPeriodEnd: form.currentPeriodEnd || undefined,
               })
             }}>
-              <OrgBoundNote enabled={canUseOrgScopedRoutes} />
               <FieldGroup>
                 <Field><FieldLabel>Organization</FieldLabel><Select value={form.organizationId} onValueChange={(value) => setForm((current) => ({ ...current, organizationId: value ?? "" }))}><SelectTrigger className="w-full"><SelectValue placeholder="Select organization" /></SelectTrigger><SelectContent><SelectGroup>{organizationList.map((organization) => <SelectItem key={organization._id} value={organization._id}>{organization.name}</SelectItem>)}</SelectGroup></SelectContent></Select></Field>
+                <Field><FieldLabel>Tenant owner (Optional)</FieldLabel><Select value={form.ownerUserId} onValueChange={(value) => setForm((current) => ({ ...current, ownerUserId: value ?? "" }))}><SelectTrigger className="w-full"><SelectValue placeholder="Select tenant owner" /></SelectTrigger><SelectContent><SelectGroup>{tenantOwnerList.filter((user) => !form.organizationId || user.organizationId === form.organizationId).map((user) => <SelectItem key={user.id} value={user.id}>{user.fullName}</SelectItem>)}</SelectGroup></SelectContent></Select></Field>
                 <Field><FieldLabel>Plan</FieldLabel><Select value={form.planId} onValueChange={(value) => setForm((current) => ({ ...current, planId: value ?? "" }))}><SelectTrigger className="w-full"><SelectValue placeholder="Select plan" /></SelectTrigger><SelectContent><SelectGroup>{planList.map((plan) => <SelectItem key={plan._id} value={plan._id}>{plan.name}</SelectItem>)}</SelectGroup></SelectContent></Select></Field>
                 <Field><FieldLabel>Billing</FieldLabel><Select value={form.billingInterval} onValueChange={(value) => setForm((current) => ({ ...current, billingInterval: value ?? "monthly" }))}><SelectTrigger className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectGroup>{["monthly","yearly"].map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}</SelectGroup></SelectContent></Select></Field>
+                <Field><FieldLabel>Status</FieldLabel><Select value={form.status} onValueChange={(value) => setForm((current) => ({ ...current, status: value ?? "active" }))}><SelectTrigger className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectGroup>{["active","pending","cancelled","expired"].map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}</SelectGroup></SelectContent></Select></Field>
+                <Field><FieldLabel>Start date (Optional)</FieldLabel><Input type="date" value={form.currentPeriodStart} onChange={(event) => setForm((current) => ({ ...current, currentPeriodStart: event.target.value ?? "" }))} /></Field>
+                <Field><FieldLabel>End date (Optional)</FieldLabel><Input type="date" value={form.currentPeriodEnd} onChange={(event) => setForm((current) => ({ ...current, currentPeriodEnd: event.target.value ?? "" }))} /></Field>
               </FieldGroup>
-              <Button type="submit" disabled={createSubscription.isPending || !canUseOrgScopedRoutes}>Create subscription</Button>
+              <Button type="submit" disabled={createSubscription.isPending}>Create subscription</Button>
             </form>
           </CardContent>
         </Card>

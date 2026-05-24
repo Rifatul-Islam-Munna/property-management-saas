@@ -4,6 +4,18 @@ import { InjectModel } from '@nestjs/mongoose';
 import axios from 'axios';
 import { Model } from 'mongoose';
 import type { JwtUser } from 'src/lib/auth.guard';
+import {
+  Organization,
+  OrganizationDocument,
+  SubscriptionPlan as OrganizationSubscriptionPlan,
+  SubscriptionStatus as OrganizationSubscriptionStatus,
+} from 'src/organization/entities/organization.entity';
+import {
+  OwnerSubscriptionTier,
+  User,
+  UserDocument,
+  UserRole,
+} from 'src/user/entities/user.entity';
 import { CreatePlanDto } from './dto/create-plan.dto';
 import { CreateSubscriptionDto } from './dto/create-subscription.dto';
 import { QueryPlanDto } from './dto/query-plan.dto';
@@ -23,6 +35,9 @@ export class SubscriptionService {
     @InjectModel(Plan.name) private readonly planModel: Model<PlanDocument>,
     @InjectModel(Subscription.name)
     private readonly subscriptionModel: Model<SubscriptionDocument>,
+    @InjectModel(Organization.name)
+    private readonly organizationModel: Model<OrganizationDocument>,
+    @InjectModel(User.name) private readonly userModel: Model<UserDocument>,
     private readonly configService: ConfigService,
   ) {}
 
@@ -96,20 +111,43 @@ export class SubscriptionService {
   async createSubscription(actor: JwtUser, dto: CreateSubscriptionDto): Promise<any> {
     const plan = await this.planModel.findById(dto.planId).lean();
     if (!plan) throw new NotFoundException('Plan not found');
+    const owner = await this.resolveSubscriptionOwner(dto.organizationId, dto.ownerUserId);
 
     const amount =
       dto.billingInterval === BillingInterval.MONTHLY
         ? plan.monthlyPrice
         : plan.yearlyPrice;
 
+    const status = dto.status ?? SubscriptionStatusRecord.PENDING;
+    const periodStart = dto.currentPeriodStart ? new Date(dto.currentPeriodStart) : null;
+    const periodEnd =
+      dto.currentPeriodEnd
+        ? new Date(dto.currentPeriodEnd)
+        : status === SubscriptionStatusRecord.ACTIVE
+          ? this.calculatePeriodEnd(dto.billingInterval, periodStart ?? new Date())
+          : null;
+
     const subscription = await this.subscriptionModel.create({
       organizationId: dto.organizationId,
-      ownerUserId: actor.id,
+      ownerUserId: owner?._id ? String(owner._id) : dto.ownerUserId ?? actor.id,
       planId: dto.planId,
       billingInterval: dto.billingInterval,
-      status: SubscriptionStatusRecord.PENDING,
+      status,
+      currentPeriodStart: periodStart,
+      currentPeriodEnd: periodEnd,
       amount,
-      meta: {},
+      meta: {
+        assignedByUserId: actor.id,
+      },
+    });
+
+    await this.syncSubscriptionAccess({
+      organizationId: dto.organizationId,
+      owner,
+      plan,
+      status,
+      periodStart,
+      periodEnd,
     });
 
     const paddlePayload = await this.tryCreatePaddleCheckout(plan, dto.billingInterval);
@@ -131,16 +169,7 @@ export class SubscriptionService {
     if (!subscription) throw new NotFoundException('Subscription not found');
     subscription.status = SubscriptionStatusRecord.ACTIVE;
     subscription.currentPeriodStart = now;
-    subscription.currentPeriodEnd = new Date(
-      now.getTime() +
-        (subscription.billingInterval === BillingInterval.MONTHLY
-          ? 30
-          : 365) *
-          24 *
-          60 *
-          60 *
-          1000,
-    );
+    subscription.currentPeriodEnd = this.calculatePeriodEnd(subscription.billingInterval, now);
     await subscription.save();
     return subscription.toObject();
   }
@@ -151,6 +180,135 @@ export class SubscriptionService {
     subscription.status = SubscriptionStatusRecord.CANCELLED;
     await subscription.save();
     return subscription.toObject();
+  }
+
+  private async resolveSubscriptionOwner(
+    organizationId: string,
+    ownerUserId?: string,
+  ): Promise<UserDocument | null> {
+    if (ownerUserId) {
+      const owner = await this.userModel.findById(ownerUserId);
+      if (!owner) {
+        throw new NotFoundException('Owner user not found');
+      }
+      return owner;
+    }
+
+    return this.userModel.findOne({
+      organizationId,
+      role: UserRole.TETENTWONER,
+    });
+  }
+
+  private async syncSubscriptionAccess({
+    organizationId,
+    owner,
+    plan,
+    status,
+    periodStart,
+    periodEnd,
+  }: {
+    organizationId: string;
+    owner: UserDocument | null;
+    plan: Record<string, any>;
+    status: SubscriptionStatusRecord;
+    periodStart: Date | null;
+    periodEnd: Date | null;
+  }): Promise<void> {
+    const organization = await this.organizationModel.findById(organizationId);
+    const organizationPlanTier = this.mapOrganizationPlanTier(plan.name);
+    const ownerPlanTier = this.mapOwnerPlanTier(plan.name);
+    const orgStatus = this.mapOrganizationStatus(status);
+
+    if (organization) {
+      organization.subscriptionStatus = orgStatus;
+      if (organizationPlanTier) {
+        organization.subscriptionPlan = organizationPlanTier;
+      }
+      organization.maxProperties = Number(plan.maxProperties ?? organization.maxProperties ?? 0);
+      organization.maxUsers = Number(plan.maxUsers ?? organization.maxUsers ?? 0);
+      await organization.save();
+    }
+
+    if (owner) {
+      owner.subscriptionRequired = true;
+      owner.subscriptionActive = status === SubscriptionStatusRecord.ACTIVE;
+      owner.subscriptionStartsAt = periodStart;
+      owner.subscriptionEndsAt = periodEnd;
+      if (ownerPlanTier) {
+        owner.subscriptionTier = ownerPlanTier;
+      }
+      await owner.save();
+    }
+  }
+
+  private mapOrganizationPlanTier(
+    planName?: string,
+  ): OrganizationSubscriptionPlan | null {
+    const normalizedPlanName = planName?.trim().toLowerCase() ?? '';
+
+    if (normalizedPlanName.includes('enterprise')) {
+      return OrganizationSubscriptionPlan.ENTERPRISE;
+    }
+
+    if (normalizedPlanName.includes('growth')) {
+      return OrganizationSubscriptionPlan.GROWTH;
+    }
+
+    if (normalizedPlanName.includes('starter')) {
+      return OrganizationSubscriptionPlan.STARTER;
+    }
+
+    return null;
+  }
+
+  private mapOwnerPlanTier(
+    planName?: string,
+  ): OwnerSubscriptionTier | null {
+    const normalizedPlanName = planName?.trim().toLowerCase() ?? '';
+
+    if (normalizedPlanName.includes('enterprise')) {
+      return OwnerSubscriptionTier.ENTERPRISE;
+    }
+
+    if (normalizedPlanName.includes('growth')) {
+      return OwnerSubscriptionTier.GROWTH;
+    }
+
+    if (normalizedPlanName.includes('starter')) {
+      return OwnerSubscriptionTier.STARTER;
+    }
+
+    return null;
+  }
+
+  private mapOrganizationStatus(
+    status: SubscriptionStatusRecord,
+  ): OrganizationSubscriptionStatus {
+    switch (status) {
+      case SubscriptionStatusRecord.ACTIVE:
+        return OrganizationSubscriptionStatus.ACTIVE;
+      case SubscriptionStatusRecord.CANCELLED:
+        return OrganizationSubscriptionStatus.CANCELLED;
+      case SubscriptionStatusRecord.EXPIRED:
+        return OrganizationSubscriptionStatus.EXPIRED;
+      default:
+        return OrganizationSubscriptionStatus.TRIAL;
+    }
+  }
+
+  private calculatePeriodEnd(
+    billingInterval: BillingInterval,
+    periodStart: Date,
+  ): Date {
+    return new Date(
+      periodStart.getTime() +
+        (billingInterval === BillingInterval.MONTHLY ? 30 : 365) *
+          24 *
+          60 *
+          60 *
+          1000,
+    );
   }
 
   private async tryCreatePaddleCheckout(

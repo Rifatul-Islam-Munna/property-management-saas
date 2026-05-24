@@ -498,3 +498,15 @@ Announcement/Notice features:
 - [x] `frontend/components/dashboard/admin-control-center.tsx` fallback admin plan form cleaned of raw Paddle ids
 - [x] `backend npx.cmd tsc --noEmit` passes
 - [x] `frontend npm.cmd run typecheck` passes
+
+## Phase 40: Admin User Subscription Assignment
+
+- [x] `backend/src/subscription/dto/create-subscription.dto.ts` custom owner/status/date-range fields added
+- [x] `backend/src/subscription/subscription.controller.ts` super admin allowed for subscription create
+- [x] `backend/src/subscription/subscription.module.ts` organization/user models wired for subscription sync
+- [x] `backend/src/subscription/subscription.service.ts` tenant-owner/org subscription sync added with custom period support
+- [x] `frontend/hooks/use-admin-actions.ts` subscription payload expanded for owner/date/status fields
+- [x] `frontend/components/dashboard/admin-pages.tsx` users page now assigns subscriptions directly to tenant owners
+- [x] `frontend/components/dashboard/admin-pages.tsx` subscriptions page now supports owner + custom start/end date
+- [x] `backend npx.cmd tsc --noEmit` passes
+- [x] `frontend npm.cmd run typecheck` passes
