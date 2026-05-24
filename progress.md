@@ -510,3 +510,30 @@ Announcement/Notice features:
 - [x] `frontend/components/dashboard/admin-pages.tsx` subscriptions page now supports owner + custom start/end date
 - [x] `backend npx.cmd tsc --noEmit` passes
 - [x] `frontend npm.cmd run typecheck` passes
+
+## Phase 41: Tenant Owner Payment Due View
+
+- [x] backend tenant payment month filter already reused from `backend/src/tenant/tenant.service.ts`
+- [x] `frontend/hooks/use-owner-dashboard.ts` tenant query now supports property/search/month/paid filters
+- [x] `frontend/lib/types/dashboard.ts` tenant payment typing expanded
+- [x] `frontend/components/dashboard/tenant-owner-pages.tsx` tenant page now shows paid/unpaid month filters
+- [x] `frontend/components/dashboard/tenant-owner-pages.tsx` tenant page now shows due summary cards
+- [x] `frontend/components/dashboard/tenant-owner-pages.tsx` tenant page now shows payment history with month/date/method
+- [x] `frontend npm.cmd run typecheck` passes
+
+## Phase 42: Worker Reports For Recurring And Inspection
+
+- [x] `backend/src/inspection/entities/inspection.entity.ts` assigned worker + worker report fields added
+- [x] `backend/src/inspection/dto/report-inspection.dto.ts` added
+- [x] `backend/src/inspection/inspection.controller.ts` worker report route added
+- [x] `backend/src/inspection/inspection.service.ts` worker-scoped inspection report submit added
+- [x] `backend/src/recurring-maintenance/entities/recurring-maintenance.entity.ts` assigned worker + run history added
+- [x] `backend/src/recurring-maintenance/dto/report-recurring-maintenance.dto.ts` added
+- [x] `backend/src/recurring-maintenance/recurring-maintenance.controller.ts` worker report route added
+- [x] `backend/src/recurring-maintenance/recurring-maintenance.service.ts` recurring run report submit added
+- [x] `frontend/components/dashboard/tenant-owner-pages.tsx` owner can assign worker for recurring/inspection
+- [x] `frontend/components/dashboard/tenant-owner-pages.tsx` owner sees assigned worker and latest report
+- [x] `frontend/components/dashboard/worker-dashboard.tsx` worker reporting UI added
+- [x] `frontend/app/dashboard/worker/page.tsx` worker placeholder replaced with live report page
+- [x] `backend npx.cmd tsc --noEmit` passes
+- [x] `frontend npm.cmd run typecheck` passes

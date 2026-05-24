@@ -75,6 +75,7 @@ export type TenantItem = {
   unitId?: string | null
   fullName: string
   email?: string
+  phone?: string
   phoneNumber?: string
   tenantKind?: string
   monthlyRent?: number | null
@@ -173,7 +174,15 @@ export type InspectionItem = {
   scheduledAt?: string
   checklist?: string[]
   photos?: string[]
+  assignedTo?: string | null
+  damageReport?: string | null
+  notes?: string | null
+  workerReport?: string | null
+  workerReportFiles?: string[]
+  workerReportedAt?: string | null
+  workerReportedBy?: string | null
   completed?: boolean
+  completedAt?: string | null
 }
 
 export type RecurringMaintenanceItem = {
@@ -184,6 +193,14 @@ export type RecurringMaintenanceItem = {
   description?: string
   frequency: string
   nextRunAt?: string
+  assignedTo?: string | null
+  runHistory?: Array<{
+    status: string
+    note?: string | null
+    files?: string[]
+    reportedAt?: string | null
+    reportedBy?: string
+  }>
   isActive?: boolean
 }
 

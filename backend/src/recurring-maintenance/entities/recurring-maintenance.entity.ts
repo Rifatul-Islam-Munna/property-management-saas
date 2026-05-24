@@ -10,6 +10,30 @@ export enum RecurringFrequency {
 
 export type RecurringMaintenanceDocument = HydratedDocument<RecurringMaintenance>;
 
+export enum RecurringReportStatus {
+  PENDING = 'pending',
+  COMPLETED = 'completed',
+  SKIPPED = 'skipped',
+}
+
+@Schema({ _id: false })
+export class RecurringRunReport {
+  @Prop({ type: String, enum: RecurringReportStatus, default: RecurringReportStatus.COMPLETED })
+  status: RecurringReportStatus;
+
+  @Prop({ type: String, default: null })
+  note?: string | null;
+
+  @Prop({ type: [String], default: [] })
+  files: string[];
+
+  @Prop({ type: Date, default: Date.now })
+  reportedAt: Date;
+
+  @Prop({ type: String, required: true })
+  reportedBy: string;
+}
+
 @Schema({ timestamps: true })
 export class RecurringMaintenance {
   @Prop({ type: String, required: true, index: true })
@@ -32,6 +56,27 @@ export class RecurringMaintenance {
 
   @Prop({ type: Date, required: true })
   nextRunAt: Date;
+
+  @Prop({ type: String, default: null, index: true })
+  assignedTo?: string | null;
+
+  @Prop({
+    type: [
+      {
+        status: {
+          type: String,
+          enum: RecurringReportStatus,
+          default: RecurringReportStatus.COMPLETED,
+        },
+        note: { type: String, default: null },
+        files: { type: [String], default: [] },
+        reportedAt: { type: Date, default: Date.now },
+        reportedBy: { type: String, required: true },
+      },
+    ],
+    default: [],
+  })
+  runHistory: RecurringRunReport[];
 
   @Prop({ type: Boolean, default: true })
   isActive: boolean;

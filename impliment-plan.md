@@ -331,6 +331,11 @@ Frontend dashboard foundation:
 - admin/fallback plan creation UIs now hide raw Paddle ids and explain automatic sync instead
 - admin can now assign subscriptions directly to tenant-owner users with custom start/end dates and status
 - subscription create now syncs owner subscription flags plus organization subscription status/limits
+- tenant owner tenant page now exposes backend month payment filters so owner can query who paid or is due by month
+- tenant owner tenant page now shows payment history rows with paid date, due date, amount, and method
+- inspections now support assigned worker, worker report, files, damage report, and completed timestamp
+- recurring maintenance now supports assigned worker plus worker run history/report submissions
+- worker dashboard now includes live assigned inspection and recurring report submission UI
 
 Backend auth additions:
 - fixed default super admin seed on boot: `test@gmail.com` / `11111111`

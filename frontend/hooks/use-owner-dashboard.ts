@@ -101,11 +101,28 @@ export function useOwnerUnitsQuery() {
   )
 }
 
-export function useOwnerTenantsQuery() {
+export function useOwnerTenantsQuery(params?: {
+  propertyId?: string
+  tenantKind?: "renter" | "guest"
+  search?: string
+  paymentMonth?: string
+  paidThisMonth?: boolean
+}) {
+  const searchParams = new URLSearchParams()
+  if (params?.propertyId) searchParams.set("propertyId", params.propertyId)
+  if (params?.tenantKind) searchParams.set("tenantKind", params.tenantKind)
+  if (params?.search?.trim()) searchParams.set("search", params.search.trim())
+  if (params?.paymentMonth) searchParams.set("paymentMonth", params.paymentMonth)
+  if (typeof params?.paidThisMonth === "boolean") {
+    searchParams.set("paidThisMonth", String(params.paidThisMonth))
+  }
+
+  const queryString = searchParams.toString()
+
   return useQueryWrapper<
     ApiSuccessResponse<PaginatedResult<TenantItem>>,
     TenantItem[]
-  >(["owner", "tenants"], "/tenant", {
+  >(["owner", "tenants", params ?? {}], `/tenant${queryString ? `?${queryString}` : ""}`, {
     select: (response) => response?.data?.data ?? [],
   })
 }
@@ -160,6 +177,24 @@ export function useOwnerRecurringMaintenancesQuery() {
     ApiSuccessResponse<PaginatedResult<RecurringMaintenanceItem>>,
     RecurringMaintenanceItem[]
   >(["owner", "recurring-maintenances"], "/recurring-maintenance", {
+    select: (response) => response?.data?.data ?? [],
+  })
+}
+
+export function useWorkerInspectionsQuery() {
+  return useQueryWrapper<
+    ApiSuccessResponse<PaginatedResult<InspectionItem>>,
+    InspectionItem[]
+  >(["worker", "inspections"], "/inspection", {
+    select: (response) => response?.data?.data ?? [],
+  })
+}
+
+export function useWorkerRecurringMaintenancesQuery() {
+  return useQueryWrapper<
+    ApiSuccessResponse<PaginatedResult<RecurringMaintenanceItem>>,
+    RecurringMaintenanceItem[]
+  >(["worker", "recurring-maintenances"], "/recurring-maintenance", {
     select: (response) => response?.data?.data ?? [],
   })
 }

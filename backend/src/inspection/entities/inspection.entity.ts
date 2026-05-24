@@ -32,14 +32,32 @@ export class Inspection {
   @Prop({ type: [String], default: [] })
   photos: string[];
 
+  @Prop({ type: String, default: null, index: true })
+  assignedTo?: string | null;
+
   @Prop({ type: String, default: null })
   damageReport?: string | null;
 
   @Prop({ type: String, default: null })
   notes?: string | null;
 
+  @Prop({ type: String, default: null })
+  workerReport?: string | null;
+
+  @Prop({ type: [String], default: [] })
+  workerReportFiles: string[];
+
+  @Prop({ type: Date, default: null })
+  workerReportedAt?: Date | null;
+
+  @Prop({ type: String, default: null })
+  workerReportedBy?: string | null;
+
   @Prop({ type: Boolean, default: false })
   completed: boolean;
+
+  @Prop({ type: Date, default: null })
+  completedAt?: Date | null;
 
   @Prop({ type: String, required: true })
   createdBy: string;

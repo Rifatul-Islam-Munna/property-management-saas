@@ -9,6 +9,7 @@ import { SuccessResponseDto } from 'src/lib/success-response.dto';
 import { UserRole } from 'src/user/entities/user.entity';
 import { CreateRecurringMaintenanceDto } from './dto/create-recurring-maintenance.dto';
 import { QueryRecurringMaintenanceDto } from './dto/query-recurring-maintenance.dto';
+import { ReportRecurringMaintenanceDto } from './dto/report-recurring-maintenance.dto';
 import { UpdateRecurringMaintenanceDto } from './dto/update-recurring-maintenance.dto';
 import { RecurringMaintenanceService } from './recurring-maintenance.service';
 
@@ -29,7 +30,9 @@ export class RecurringMaintenanceController {
   @Get()
   @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.TETENTWONER, UserRole.WORKER)
   async findAll(@Req() req: ExpressRequest, @Query() query: QueryRecurringMaintenanceDto): Promise<SuccessResponseDto<any>> {
-    const data = await this.recurringService.findAll(req.user.organizationId ?? '', query);
+    const scopedQuery =
+      req.user.role === UserRole.WORKER ? { ...query, assignedTo: req.user.id } : query;
+    const data = await this.recurringService.findAll(req.user.organizationId ?? '', scopedQuery);
     return new SuccessResponseDto(200, 'Recurring maintenance list fetched', data);
   }
 
@@ -56,5 +59,16 @@ export class RecurringMaintenanceController {
   async remove(@Req() req: ExpressRequest, @Param('id', MongoIdPipe) id: string): Promise<SuccessResponseDto<any>> {
     const data = await this.recurringService.remove(req.user.organizationId ?? '', id);
     return new SuccessResponseDto(200, 'Recurring maintenance deleted successfully', data);
+  }
+
+  @Patch(':id/report')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.TETENTWONER, UserRole.WORKER)
+  async submitReport(
+    @Req() req: ExpressRequest,
+    @Param('id', MongoIdPipe) id: string,
+    @Body() dto: ReportRecurringMaintenanceDto,
+  ): Promise<SuccessResponseDto<any>> {
+    const data = await this.recurringService.submitReport(req.user.organizationId ?? '', req.user, id, dto);
+    return new SuccessResponseDto(200, 'Recurring maintenance report submitted successfully', data);
   }
 }

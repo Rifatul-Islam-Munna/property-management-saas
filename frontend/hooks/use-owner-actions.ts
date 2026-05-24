@@ -171,6 +171,7 @@ type OwnerInspectionPayload = {
   unitId?: string
   type: string
   scheduledAt: string
+  assignedTo?: string
   checklist?: string[]
   photos?: string[]
   damageReport?: string
@@ -185,6 +186,7 @@ type OwnerRecurringPayload = {
   description?: string
   frequency: string
   nextRunAt: string
+  assignedTo?: string
   isActive?: boolean
 }
 
@@ -207,6 +209,22 @@ type OwnerTenantPaymentPayload = {
   dueDate?: string
   paymentMethod?: string
   note?: string
+}
+
+type WorkerInspectionReportPayload = {
+  id: string
+  workerReport?: string
+  workerReportFiles?: string[]
+  damageReport?: string
+  notes?: string
+  completed?: boolean
+}
+
+type WorkerRecurringReportPayload = {
+  id: string
+  status?: string
+  note?: string
+  files?: string[]
 }
 
 type ToggleEntityVariables = {
@@ -554,4 +572,54 @@ export function useOwnerDeleteTechnicianMutation() {
     [["owner", "technicians"]],
     (id) => `/technician/${id}`
   )
+}
+
+export function useWorkerSubmitInspectionReportMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationKey: ["worker", "report", "inspection"],
+    mutationFn: async ({ id, ...payload }: WorkerInspectionReportPayload) => {
+      const [data, error] = await patchRequest<ApiSuccessResponse<InspectionItem>, typeof payload>(
+        `/inspection/${id}/report`,
+        payload
+      )
+      if (error || !data) throw new Error(error?.message ?? "Inspection report failed")
+      return data
+    },
+    onSuccess: async () => {
+      toast.success("Inspection report sent")
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["worker", "inspections"] }),
+        queryClient.invalidateQueries({ queryKey: ["owner", "inspections"] }),
+      ])
+    },
+    onError: (error: Error) => {
+      toast.error(error.message)
+    },
+  })
+}
+
+export function useWorkerSubmitRecurringReportMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationKey: ["worker", "report", "recurring"],
+    mutationFn: async ({ id, ...payload }: WorkerRecurringReportPayload) => {
+      const [data, error] = await patchRequest<ApiSuccessResponse<RecurringMaintenanceItem>, typeof payload>(
+        `/recurring-maintenance/${id}/report`,
+        payload
+      )
+      if (error || !data) throw new Error(error?.message ?? "Recurring report failed")
+      return data
+    },
+    onSuccess: async () => {
+      toast.success("Recurring report sent")
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["worker", "recurring-maintenances"] }),
+        queryClient.invalidateQueries({ queryKey: ["owner", "recurring-maintenances"] }),
+      ])
+    },
+    onError: (error: Error) => {
+      toast.error(error.message)
+    },
+  })
 }

@@ -31,6 +31,11 @@ export class CreateRecurringMaintenanceDto {
 
   @ApiPropertyOptional()
   @IsOptional()
+  @IsString()
+  assignedTo?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
   @IsBoolean()
   isActive?: boolean;
 }

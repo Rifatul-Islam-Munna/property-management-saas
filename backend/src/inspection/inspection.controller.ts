@@ -9,6 +9,7 @@ import { SuccessResponseDto } from 'src/lib/success-response.dto';
 import { UserRole } from 'src/user/entities/user.entity';
 import { CreateInspectionDto } from './dto/create-inspection.dto';
 import { QueryInspectionDto } from './dto/query-inspection.dto';
+import { ReportInspectionDto } from './dto/report-inspection.dto';
 import { UpdateInspectionDto } from './dto/update-inspection.dto';
 import { InspectionService } from './inspection.service';
 
@@ -29,7 +30,9 @@ export class InspectionController {
   @Get()
   @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.TETENTWONER, UserRole.WORKER)
   async findAll(@Req() req: ExpressRequest, @Query() query: QueryInspectionDto): Promise<SuccessResponseDto<any>> {
-    const data = await this.inspectionService.findAll(req.user.organizationId ?? '', query);
+    const scopedQuery =
+      req.user.role === UserRole.WORKER ? { ...query, assignedTo: req.user.id } : query;
+    const data = await this.inspectionService.findAll(req.user.organizationId ?? '', scopedQuery);
     return new SuccessResponseDto(200, 'Inspection list fetched', data);
   }
 
@@ -56,5 +59,16 @@ export class InspectionController {
   async remove(@Req() req: ExpressRequest, @Param('id', MongoIdPipe) id: string): Promise<SuccessResponseDto<any>> {
     const data = await this.inspectionService.remove(req.user.organizationId ?? '', id);
     return new SuccessResponseDto(200, 'Inspection deleted successfully', data);
+  }
+
+  @Patch(':id/report')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.TETENTWONER, UserRole.WORKER)
+  async submitReport(
+    @Req() req: ExpressRequest,
+    @Param('id', MongoIdPipe) id: string,
+    @Body() dto: ReportInspectionDto,
+  ): Promise<SuccessResponseDto<any>> {
+    const data = await this.inspectionService.submitReport(req.user.organizationId ?? '', req.user, id, dto);
+    return new SuccessResponseDto(200, 'Inspection report submitted successfully', data);
   }
 }

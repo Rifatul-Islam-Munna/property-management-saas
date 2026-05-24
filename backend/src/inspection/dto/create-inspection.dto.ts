@@ -35,6 +35,11 @@ export class CreateInspectionDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
+  assignedTo?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
   damageReport?: string;
 
   @ApiPropertyOptional()

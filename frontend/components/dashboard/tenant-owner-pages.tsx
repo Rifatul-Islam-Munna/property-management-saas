@@ -676,7 +676,18 @@ export function TenantOwnerTenantsPage() {
   const properties = useOwnerPropertiesQuery()
   const units = useOwnerUnitsQuery()
   const users = useOwnerUsersQuery()
-  const tenants = useOwnerTenantsQuery()
+  const [paymentMonth, setPaymentMonth] = useState(new Date().toISOString().slice(0, 7))
+  const [search, setSearch] = useState("")
+  const [propertyFilter, setPropertyFilter] = useState("")
+  const [kindFilter, setKindFilter] = useState<"all" | "renter" | "guest">("all")
+  const [paymentFilter, setPaymentFilter] = useState<"all" | "paid" | "unpaid">("all")
+  const tenants = useOwnerTenantsQuery({
+    search: search || undefined,
+    propertyId: propertyFilter || undefined,
+    tenantKind: kindFilter === "all" ? undefined : kindFilter,
+    paymentMonth: paymentMonth || undefined,
+    paidThisMonth: paymentFilter === "all" ? undefined : paymentFilter === "paid",
+  })
   const createTenant = useOwnerCreateTenantMutation()
   const recordPayment = useOwnerRecordTenantPaymentMutation()
   const toggleTenant = useOwnerToggleTenantMutation()
@@ -686,7 +697,6 @@ export function TenantOwnerTenantsPage() {
   const userList = Array.isArray(users.data) ? users.data : []
   const tenantList = Array.isArray(tenants.data) ? tenants.data : []
   const [isCreateOpen, setIsCreateOpen] = useState(false)
-  const [paymentMonth, setPaymentMonth] = useState(new Date().toISOString().slice(0, 7))
   const [form, setForm] = useState({
     tenantKind: "renter",
     propertyId: "",
@@ -704,13 +714,32 @@ export function TenantOwnerTenantsPage() {
     [userList]
   )
 
+  const monthStats = useMemo(
+    () =>
+      tenantList.reduce(
+        (acc, tenant) => {
+          const payment = tenant.paymentRecords?.find((item) => item.monthKey === paymentMonth)
+          const isPaid =
+            payment?.status === "paid" ||
+            (tenant.tenantKind === "guest" && (tenant.guestFeePaid ?? false))
+
+          if (isPaid) acc.paid += 1
+          else acc.unpaid += 1
+
+          return acc
+        },
+        { paid: 0, unpaid: 0 }
+      ),
+    [paymentMonth, tenantList]
+  )
+
   return (
     <div className="space-y-6">
       <OwnerPageHero
         icon={Shield}
         badge="Residents"
         title="Tenant records"
-        body="Track renters and guests with direct property dropdowns, linked user accounts, and fee inputs on one dedicated page."
+        body="Track renters and guests with direct property dropdowns, linked user accounts, payment month filters, and due follow-up."
       />
       <div className="flex justify-end">
         <CreateSheet
@@ -720,57 +749,57 @@ export function TenantOwnerTenantsPage() {
           description="Guest one-time fee or renter monthly rent."
           triggerLabel="Add tenant"
         >
-            <form
-              className="space-y-4"
-              onSubmit={(event) => {
-                event.preventDefault()
-                createTenant.mutate(
-                  {
-                    tenantKind: form.tenantKind as "renter" | "guest",
-                    propertyId: form.propertyId,
-                    unitId: form.unitId || undefined,
-                    userId: form.userId || undefined,
-                    fullName: form.fullName,
-                    email: form.email,
-                    phone: form.phone,
-                    monthlyRent: Number(form.monthlyRent || "0") || undefined,
-                    oneTimeGuestFee: Number(form.oneTimeGuestFee || "0") || undefined,
+          <form
+            className="space-y-4"
+            onSubmit={(event) => {
+              event.preventDefault()
+              createTenant.mutate(
+                {
+                  tenantKind: form.tenantKind as "renter" | "guest",
+                  propertyId: form.propertyId,
+                  unitId: form.unitId || undefined,
+                  userId: form.userId || undefined,
+                  fullName: form.fullName,
+                  email: form.email,
+                  phone: form.phone,
+                  monthlyRent: Number(form.monthlyRent || "0") || undefined,
+                  oneTimeGuestFee: Number(form.oneTimeGuestFee || "0") || undefined,
+                },
+                {
+                  onSuccess: () => {
+                    setForm({
+                      tenantKind: "renter",
+                      propertyId: "",
+                      unitId: "",
+                      userId: "",
+                      fullName: "",
+                      email: "",
+                      phone: "",
+                      monthlyRent: "",
+                      oneTimeGuestFee: "",
+                    })
+                    setIsCreateOpen(false)
                   },
-                  {
-                    onSuccess: () => {
-                      setForm({
-                        tenantKind: "renter",
-                        propertyId: "",
-                        unitId: "",
-                        userId: "",
-                        fullName: "",
-                        email: "",
-                        phone: "",
-                        monthlyRent: "",
-                        oneTimeGuestFee: "",
-                      })
-                      setIsCreateOpen(false)
-                    },
-                  }
-                )
-              }}
-            >
-              <FieldGroup>
-                <Field><FieldLabel>Kind</FieldLabel><Select value={form.tenantKind} onValueChange={(value) => setForm((current) => ({ ...current, tenantKind: value ?? "renter" }))}><SelectTrigger className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectGroup>{["renter", "guest"].map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}</SelectGroup></SelectContent></Select></Field>
-                <Field><FieldLabel>Property</FieldLabel><Select value={form.propertyId} onValueChange={(value) => setForm((current) => ({ ...current, propertyId: value ?? "" }))}><SelectTrigger className="w-full"><SelectValue placeholder="Select property" /></SelectTrigger><SelectContent><SelectGroup>{propertyList.map((property) => <SelectItem key={property._id} value={property._id}>{property.name}</SelectItem>)}</SelectGroup></SelectContent></Select></Field>
-                <Field><FieldLabel>Unit (Optional)</FieldLabel><Select value={form.unitId} onValueChange={(value) => setForm((current) => ({ ...current, unitId: value ?? "" }))}><SelectTrigger className="w-full"><SelectValue placeholder="Select unit" /></SelectTrigger><SelectContent><SelectGroup>{unitList.map((unit) => <SelectItem key={unit._id} value={unit._id}>{unit.unitNumber}</SelectItem>)}</SelectGroup></SelectContent></Select></Field>
-                <Field><FieldLabel>Linked user (Optional)</FieldLabel><Select value={form.userId} onValueChange={(value) => setForm((current) => ({ ...current, userId: value ?? "" }))}><SelectTrigger className="w-full"><SelectValue placeholder="Select signed-up resident" /></SelectTrigger><SelectContent><SelectGroup>{residentUsers.map((user) => <SelectItem key={user.id} value={user.id}>{user.fullName}</SelectItem>)}</SelectGroup></SelectContent></Select></Field>
-                <Field><FieldLabel>Full name</FieldLabel><Input placeholder="Resident full name" value={form.fullName} onChange={(event) => setForm((current) => ({ ...current, fullName: event.target.value ?? "" }))} /></Field>
-                <Field><FieldLabel>Email</FieldLabel><Input type="email" placeholder="resident@email.com" value={form.email} onChange={(event) => setForm((current) => ({ ...current, email: event.target.value ?? "" }))} /></Field>
-                <Field><FieldLabel>Phone</FieldLabel><Input placeholder="01XXXXXXXXX" value={form.phone} onChange={(event) => setForm((current) => ({ ...current, phone: event.target.value ?? "" }))} /></Field>
-                {form.tenantKind === "renter" ? (
-                  <Field><FieldLabel>Monthly rent</FieldLabel><Input type="number" placeholder="Monthly rent amount" value={form.monthlyRent} onChange={(event) => setForm((current) => ({ ...current, monthlyRent: event.target.value ?? "" }))} /></Field>
-                ) : (
-                  <Field><FieldLabel>One-time guest fee</FieldLabel><Input type="number" placeholder="One-time guest fee" value={form.oneTimeGuestFee} onChange={(event) => setForm((current) => ({ ...current, oneTimeGuestFee: event.target.value ?? "" }))} /></Field>
-                )}
-              </FieldGroup>
-              <Button type="submit" disabled={createTenant.isPending || !form.propertyId}>Create tenant record</Button>
-            </form>
+                }
+              )
+            }}
+          >
+            <FieldGroup>
+              <Field><FieldLabel>Kind</FieldLabel><Select value={form.tenantKind} onValueChange={(value) => setForm((current) => ({ ...current, tenantKind: value ?? "renter" }))}><SelectTrigger className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectGroup>{["renter", "guest"].map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}</SelectGroup></SelectContent></Select></Field>
+              <Field><FieldLabel>Property</FieldLabel><Select value={form.propertyId} onValueChange={(value) => setForm((current) => ({ ...current, propertyId: value ?? "" }))}><SelectTrigger className="w-full"><SelectValue placeholder="Select property" /></SelectTrigger><SelectContent><SelectGroup>{propertyList.map((property) => <SelectItem key={property._id} value={property._id}>{property.name}</SelectItem>)}</SelectGroup></SelectContent></Select></Field>
+              <Field><FieldLabel>Unit (Optional)</FieldLabel><Select value={form.unitId} onValueChange={(value) => setForm((current) => ({ ...current, unitId: value ?? "" }))}><SelectTrigger className="w-full"><SelectValue placeholder="Select unit" /></SelectTrigger><SelectContent><SelectGroup>{unitList.map((unit) => <SelectItem key={unit._id} value={unit._id}>{unit.unitNumber}</SelectItem>)}</SelectGroup></SelectContent></Select></Field>
+              <Field><FieldLabel>Linked user (Optional)</FieldLabel><Select value={form.userId} onValueChange={(value) => setForm((current) => ({ ...current, userId: value ?? "" }))}><SelectTrigger className="w-full"><SelectValue placeholder="Select signed-up resident" /></SelectTrigger><SelectContent><SelectGroup>{residentUsers.map((user) => <SelectItem key={user.id} value={user.id}>{user.fullName}</SelectItem>)}</SelectGroup></SelectContent></Select></Field>
+              <Field><FieldLabel>Full name</FieldLabel><Input placeholder="Resident full name" value={form.fullName} onChange={(event) => setForm((current) => ({ ...current, fullName: event.target.value ?? "" }))} /></Field>
+              <Field><FieldLabel>Email</FieldLabel><Input type="email" placeholder="resident@email.com" value={form.email} onChange={(event) => setForm((current) => ({ ...current, email: event.target.value ?? "" }))} /></Field>
+              <Field><FieldLabel>Phone</FieldLabel><Input placeholder="01XXXXXXXXX" value={form.phone} onChange={(event) => setForm((current) => ({ ...current, phone: event.target.value ?? "" }))} /></Field>
+              {form.tenantKind === "renter" ? (
+                <Field><FieldLabel>Monthly rent</FieldLabel><Input type="number" placeholder="Monthly rent amount" value={form.monthlyRent} onChange={(event) => setForm((current) => ({ ...current, monthlyRent: event.target.value ?? "" }))} /></Field>
+              ) : (
+                <Field><FieldLabel>One-time guest fee</FieldLabel><Input type="number" placeholder="One-time guest fee" value={form.oneTimeGuestFee} onChange={(event) => setForm((current) => ({ ...current, oneTimeGuestFee: event.target.value ?? "" }))} /></Field>
+              )}
+            </FieldGroup>
+            <Button type="submit" disabled={createTenant.isPending || !form.propertyId}>Create tenant record</Button>
+          </form>
         </CreateSheet>
       </div>
 
@@ -779,102 +808,153 @@ export function TenantOwnerTenantsPage() {
           <Card className="shadow-none">
             <CardHeader>
               <CardTitle>Tenant list</CardTitle>
-              <CardDescription>One page for renter and guest status control, month payment tracking, fee follow-up.</CardDescription>
+              <CardDescription>See who paid, who is due, which month, and exact payment dates.</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-3">
-              <Field>
-                <FieldLabel>Payment month</FieldLabel>
-                <Input type="month" value={paymentMonth} onChange={(event) => setPaymentMonth(event.target.value ?? "")} />
-              </Field>
-              {tenantList.length ? tenantList.map((tenant) => (
-                <div key={tenant._id} className="flex flex-col gap-3 rounded-xl border p-4">
-                  {(() => {
-                    const activePayment = tenant.paymentRecords?.find((item) => item.monthKey === paymentMonth)
-                    const expectedAmount =
-                      tenant.tenantKind === "renter"
-                        ? tenant.monthlyRent ?? 0
-                        : tenant.oneTimeGuestFee ?? 0
-                    return (
-                      <>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <p className="font-medium text-slate-950">{tenant.fullName}</p>
-                    <Badge variant="outline">{tenant.tenantKind ?? "resident"}</Badge>
-                    <Badge variant={tenant.isActive ? "default" : "secondary"}>
-                      {tenant.isActive ? "Active" : "Inactive"}
-                    </Badge>
-                    <Badge variant={activePayment?.status === "paid" ? "default" : "outline"}>
-                      {activePayment?.status ?? (tenant.tenantKind === "guest" && (tenant.guestFeePaid ?? false) ? "paid" : "unpaid")}
-                    </Badge>
-                  </div>
-                  <p className="text-sm text-slate-600">{tenant.email ?? "No email"}</p>
-                  <div className="grid gap-3 rounded-xl bg-slate-50 p-3 text-sm text-slate-700 sm:grid-cols-3">
-                    <div>
-                      <p className="text-xs uppercase tracking-wide text-slate-500">Expected</p>
-                      <p className="font-medium text-slate-950">{expectedAmount}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs uppercase tracking-wide text-slate-500">Month</p>
-                      <p className="font-medium text-slate-950">{paymentMonth || "No month"}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs uppercase tracking-wide text-slate-500">Last note</p>
-                      <p className="font-medium text-slate-950">{activePayment?.note ?? "No note"}</p>
-                    </div>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    <Button
-                      type="button"
-                      size="sm"
-                      className="bg-blue-700 text-white hover:bg-blue-800"
-                      disabled={recordPayment.isPending || !paymentMonth}
-                      onClick={() =>
-                        recordPayment.mutate({
-                          tenantId: tenant._id,
-                          monthKey: paymentMonth,
-                          amount: activePayment?.amount ?? expectedAmount,
-                          status: "paid",
-                          paidAt: new Date().toISOString(),
-                          note: tenant.tenantKind === "guest" ? "Guest fee collected" : "Rent collected",
-                        })
-                      }
-                    >
-                      Mark paid
-                    </Button>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      className="shadow-none"
-                      disabled={recordPayment.isPending || !paymentMonth}
-                      onClick={() =>
-                        recordPayment.mutate({
-                          tenantId: tenant._id,
-                          monthKey: paymentMonth,
-                          amount: activePayment?.amount ?? expectedAmount,
-                          status: "pending",
-                          note: tenant.tenantKind === "guest" ? "Guest fee pending" : "Rent pending",
-                        })
-                      }
-                    >
-                      Mark pending
-                    </Button>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Switch
-                      checked={tenant.isActive ?? false}
-                      onCheckedChange={(checked) =>
-                        toggleTenant.mutate({ id: tenant._id, payload: { isActive: checked ?? false } })
-                      }
-                    />
-                    <Button variant="outline" size="sm" className="shadow-none" onClick={() => deleteTenant.mutate(tenant._id)}>
-                      Delete
-                    </Button>
-                  </div>
-                      </>
-                    )
-                  })()}
+            <CardContent className="space-y-4">
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+                <Field>
+                  <FieldLabel>Search</FieldLabel>
+                  <Input placeholder="Name, email, phone" value={search} onChange={(event) => setSearch(event.target.value ?? "")} />
+                </Field>
+                <Field>
+                  <FieldLabel>Property</FieldLabel>
+                  <Select value={propertyFilter || "__all__"} onValueChange={(value) => setPropertyFilter(value === "__all__" ? "" : (value ?? ""))}>
+                    <SelectTrigger className="w-full"><SelectValue placeholder="All properties" /></SelectTrigger>
+                    <SelectContent><SelectGroup><SelectItem value="__all__">All properties</SelectItem>{propertyList.map((property) => <SelectItem key={property._id} value={property._id}>{property.name}</SelectItem>)}</SelectGroup></SelectContent>
+                  </Select>
+                </Field>
+                <Field>
+                  <FieldLabel>Resident type</FieldLabel>
+                  <Select value={kindFilter} onValueChange={(value) => setKindFilter((value ?? "all") as "all" | "renter" | "guest")}>
+                    <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                    <SelectContent><SelectGroup>{["all", "renter", "guest"].map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}</SelectGroup></SelectContent>
+                  </Select>
+                </Field>
+                <Field>
+                  <FieldLabel>Payment month</FieldLabel>
+                  <Input type="month" value={paymentMonth} onChange={(event) => setPaymentMonth(event.target.value ?? "")} />
+                </Field>
+                <Field>
+                  <FieldLabel>Month status</FieldLabel>
+                  <Select value={paymentFilter} onValueChange={(value) => setPaymentFilter((value ?? "all") as "all" | "paid" | "unpaid")}>
+                    <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                    <SelectContent><SelectGroup>{["all", "paid", "unpaid"].map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}</SelectGroup></SelectContent>
+                  </Select>
+                </Field>
+              </div>
+
+              <div className="grid gap-3 md:grid-cols-3">
+                <div className="rounded-xl border bg-slate-50 p-4">
+                  <p className="text-xs uppercase tracking-wide text-slate-500">Total in view</p>
+                  <p className="mt-2 text-2xl font-semibold text-slate-950">{tenantList.length}</p>
                 </div>
-              )) : (
+                <div className="rounded-xl border bg-emerald-50 p-4">
+                  <p className="text-xs uppercase tracking-wide text-emerald-700">Paid in {paymentMonth}</p>
+                  <p className="mt-2 text-2xl font-semibold text-slate-950">{monthStats.paid}</p>
+                </div>
+                <div className="rounded-xl border bg-amber-50 p-4">
+                  <p className="text-xs uppercase tracking-wide text-amber-700">Due / unpaid in {paymentMonth}</p>
+                  <p className="mt-2 text-2xl font-semibold text-slate-950">{monthStats.unpaid}</p>
+                </div>
+              </div>
+
+              {tenantList.length ? tenantList.map((tenant) => {
+                const activePayment = tenant.paymentRecords?.find((item) => item.monthKey === paymentMonth)
+                const expectedAmount =
+                  tenant.tenantKind === "renter"
+                    ? tenant.monthlyRent ?? 0
+                    : tenant.oneTimeGuestFee ?? 0
+                const paymentStatus =
+                  activePayment?.status ??
+                  (tenant.tenantKind === "guest" && (tenant.guestFeePaid ?? false) ? "paid" : "unpaid")
+
+                return (
+                  <div key={tenant._id} className="flex flex-col gap-3 rounded-xl border p-4">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="font-medium text-slate-950">{tenant.fullName}</p>
+                      <Badge variant="outline">{tenant.tenantKind ?? "resident"}</Badge>
+                      <Badge variant={tenant.isActive ? "default" : "secondary"}>{tenant.isActive ? "Active" : "Inactive"}</Badge>
+                      <Badge variant={paymentStatus === "paid" ? "default" : "outline"}>{paymentStatus}</Badge>
+                    </div>
+                    <p className="text-sm text-slate-600">
+                      {tenant.email ?? "No email"}
+                      {tenant.phone ?? tenant.phoneNumber ? ` - ${tenant.phone ?? tenant.phoneNumber}` : ""}
+                    </p>
+                    <div className="grid gap-3 rounded-xl bg-slate-50 p-3 text-sm text-slate-700 sm:grid-cols-4">
+                      <div><p className="text-xs uppercase tracking-wide text-slate-500">Expected</p><p className="font-medium text-slate-950">{expectedAmount}</p></div>
+                      <div><p className="text-xs uppercase tracking-wide text-slate-500">Month</p><p className="font-medium text-slate-950">{paymentMonth || "No month"}</p></div>
+                      <div><p className="text-xs uppercase tracking-wide text-slate-500">Last note</p><p className="font-medium text-slate-950">{activePayment?.note ?? "No note"}</p></div>
+                      <div><p className="text-xs uppercase tracking-wide text-slate-500">Paid date</p><p className="font-medium text-slate-950">{activePayment?.paidAt ? new Date(activePayment.paidAt).toLocaleDateString() : "Not paid"}</p></div>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        className="bg-blue-700 text-white hover:bg-blue-800"
+                        disabled={recordPayment.isPending || !paymentMonth}
+                        onClick={() =>
+                          recordPayment.mutate({
+                            tenantId: tenant._id,
+                            monthKey: paymentMonth,
+                            amount: activePayment?.amount ?? expectedAmount,
+                            status: "paid",
+                            paidAt: new Date().toISOString(),
+                            note: tenant.tenantKind === "guest" ? "Guest fee collected" : "Rent collected",
+                          })
+                        }
+                      >
+                        Mark paid
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="shadow-none"
+                        disabled={recordPayment.isPending || !paymentMonth}
+                        onClick={() =>
+                          recordPayment.mutate({
+                            tenantId: tenant._id,
+                            monthKey: paymentMonth,
+                            amount: activePayment?.amount ?? expectedAmount,
+                            status: "pending",
+                            note: tenant.tenantKind === "guest" ? "Guest fee pending" : "Rent pending",
+                          })
+                        }
+                      >
+                        Mark pending
+                      </Button>
+                    </div>
+                    <div className="rounded-xl border bg-white p-3">
+                      <div className="mb-2 flex items-center justify-between gap-2">
+                        <p className="text-sm font-medium text-slate-950">Payment history</p>
+                        <Badge variant="secondary">{tenant.paymentRecords?.length ?? 0} records</Badge>
+                      </div>
+                      {tenant.paymentRecords?.length ? (
+                        <div className="space-y-2">
+                          {[...(tenant.paymentRecords ?? [])]
+                            .sort((left, right) => (right.monthKey ?? "").localeCompare(left.monthKey ?? ""))
+                            .map((record) => (
+                              <div key={`${tenant._id}-${record.monthKey}`} className="grid gap-2 rounded-lg border p-3 text-xs text-slate-600 md:grid-cols-6">
+                                <div><p className="uppercase tracking-wide text-slate-500">Month</p><p className="font-medium text-slate-950">{record.monthKey}</p></div>
+                                <div><p className="uppercase tracking-wide text-slate-500">Status</p><p className="font-medium text-slate-950">{record.status}</p></div>
+                                <div><p className="uppercase tracking-wide text-slate-500">Amount</p><p className="font-medium text-slate-950">{record.amount}</p></div>
+                                <div><p className="uppercase tracking-wide text-slate-500">Paid date</p><p className="font-medium text-slate-950">{record.paidAt ? new Date(record.paidAt).toLocaleDateString() : "Not paid"}</p></div>
+                                <div><p className="uppercase tracking-wide text-slate-500">Due date</p><p className="font-medium text-slate-950">{record.dueDate ? new Date(record.dueDate).toLocaleDateString() : "No due date"}</p></div>
+                                <div><p className="uppercase tracking-wide text-slate-500">Method</p><p className="font-medium text-slate-950">{record.paymentMethod ?? "N/A"}</p></div>
+                              </div>
+                            ))}
+                        </div>
+                      ) : (
+                        <p className="text-xs text-slate-500">No payment history yet.</p>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Switch checked={tenant.isActive ?? false} onCheckedChange={(checked) => toggleTenant.mutate({ id: tenant._id, payload: { isActive: checked ?? false } })} />
+                      <Button variant="outline" size="sm" className="shadow-none" onClick={() => deleteTenant.mutate(tenant._id)}>Delete</Button>
+                    </div>
+                  </div>
+                )
+              }) : (
                 <Empty>
                   <EmptyHeader>
                     <EmptyMedia variant="icon"><Shield /></EmptyMedia>
@@ -1662,100 +1742,114 @@ export function TenantOwnerWorkOrdersPage() {
 export function TenantOwnerRecurringPage() {
   const properties = useOwnerPropertiesQuery()
   const units = useOwnerUnitsQuery()
+  const users = useOwnerUsersQuery()
   const recurring = useOwnerRecurringMaintenancesQuery()
   const createRecurring = useOwnerCreateRecurringMaintenanceMutation()
   const [isCreateOpen, setIsCreateOpen] = useState(false)
   const propertyList = Array.isArray(properties.data) ? properties.data : []
   const unitList = Array.isArray(units.data) ? units.data : []
+  const workerList = Array.isArray(users.data) ? users.data.filter((user) => user.role === "worker") : []
   const recurringList = Array.isArray(recurring.data) ? recurring.data : []
-  const [form, setForm] = useState({ propertyId: "", unitId: "", title: "", description: "", frequency: "monthly", nextRunAt: "", isActive: true })
+  const [form, setForm] = useState({ propertyId: "", unitId: "", title: "", description: "", frequency: "monthly", nextRunAt: "", assignedTo: "", isActive: true })
 
   return (
     <div className="space-y-6">
-      <OwnerPageHero icon={Repeat} badge="Recurring" title="Recurring maintenance" body="Schedule repeating maintenance tasks for any property or unit." />
+        <OwnerPageHero icon={Repeat} badge="Recurring" title="Recurring maintenance" body="Schedule repeating maintenance, assign worker, then receive worker run reports back here." />
       <div className="flex justify-end">
         <CreateSheet open={isCreateOpen} onOpenChange={setIsCreateOpen} title="Create recurring maintenance" description="Set frequency and next run date." triggerLabel="Add recurring">
           <form className="space-y-4" onSubmit={(event) => {
             event.preventDefault()
-            createRecurring.mutate({ ...form, unitId: form.unitId || undefined }, { onSuccess: () => {
-              setForm({ propertyId: "", unitId: "", title: "", description: "", frequency: "monthly", nextRunAt: "", isActive: true })
-              setIsCreateOpen(false)
-            }})
-          }}>
-            <FieldGroup>
+              createRecurring.mutate({ ...form, unitId: form.unitId || undefined, assignedTo: form.assignedTo || undefined }, { onSuccess: () => {
+                setForm({ propertyId: "", unitId: "", title: "", description: "", frequency: "monthly", nextRunAt: "", assignedTo: "", isActive: true })
+                setIsCreateOpen(false)
+              }})
+            }}>
+              <FieldGroup>
               <Field><FieldLabel>Property</FieldLabel><Select value={form.propertyId} onValueChange={(value) => setForm((current) => ({ ...current, propertyId: value ?? "" }))}><SelectTrigger className="w-full"><SelectValue placeholder="Select property" /></SelectTrigger><SelectContent><SelectGroup>{propertyList.map((property) => <SelectItem key={property._id} value={property._id}>{property.name}</SelectItem>)}</SelectGroup></SelectContent></Select></Field>
               <Field><FieldLabel>Unit (Optional)</FieldLabel><Select value={form.unitId} onValueChange={(value) => setForm((current) => ({ ...current, unitId: value ?? "" }))}><SelectTrigger className="w-full"><SelectValue placeholder="Select unit" /></SelectTrigger><SelectContent><SelectGroup>{unitList.map((unit) => <SelectItem key={unit._id} value={unit._id}>{unit.unitNumber}</SelectItem>)}</SelectGroup></SelectContent></Select></Field>
               <Field><FieldLabel>Title</FieldLabel><Input value={form.title} onChange={(event) => setForm((current) => ({ ...current, title: event.target.value ?? "" }))} /></Field>
-              <Field><FieldLabel>Description (Optional)</FieldLabel><Textarea value={form.description} onChange={(event) => setForm((current) => ({ ...current, description: event.target.value ?? "" }))} /></Field>
-              <Field><FieldLabel>Frequency</FieldLabel><Select value={form.frequency} onValueChange={(value) => setForm((current) => ({ ...current, frequency: value ?? "monthly" }))}><SelectTrigger className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectGroup>{["weekly","monthly","quarterly","yearly"].map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}</SelectGroup></SelectContent></Select></Field>
-              <Field><FieldLabel>Next run date</FieldLabel><Input type="date" value={form.nextRunAt} onChange={(event) => setForm((current) => ({ ...current, nextRunAt: event.target.value ?? "" }))} /></Field>
-            </FieldGroup>
-            <Button type="submit" disabled={createRecurring.isPending || !form.propertyId || !form.title || !form.nextRunAt}>Create recurring maintenance</Button>
-          </form>
-        </CreateSheet>
+                <Field><FieldLabel>Description (Optional)</FieldLabel><Textarea value={form.description} onChange={(event) => setForm((current) => ({ ...current, description: event.target.value ?? "" }))} /></Field>
+                <Field><FieldLabel>Frequency</FieldLabel><Select value={form.frequency} onValueChange={(value) => setForm((current) => ({ ...current, frequency: value ?? "monthly" }))}><SelectTrigger className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectGroup>{["weekly","monthly","quarterly","yearly"].map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}</SelectGroup></SelectContent></Select></Field>
+                <Field><FieldLabel>Next run date</FieldLabel><Input type="date" value={form.nextRunAt} onChange={(event) => setForm((current) => ({ ...current, nextRunAt: event.target.value ?? "" }))} /></Field>
+                <Field><FieldLabel>Assign worker (Optional)</FieldLabel><Select value={form.assignedTo} onValueChange={(value) => setForm((current) => ({ ...current, assignedTo: value ?? "" }))}><SelectTrigger className="w-full"><SelectValue placeholder="Select worker" /></SelectTrigger><SelectContent><SelectGroup>{workerList.map((user) => <SelectItem key={user.id} value={user.id}>{user.fullName}</SelectItem>)}</SelectGroup></SelectContent></Select></Field>
+              </FieldGroup>
+              <Button type="submit" disabled={createRecurring.isPending || !form.propertyId || !form.title || !form.nextRunAt}>Create recurring maintenance</Button>
+            </form>
+          </CreateSheet>
+        </div>
+        <WithBone name="owner-page-recurring" loading={recurring.isLoading} fallback={<DashboardTableSkeleton />}>
+          <Card className="shadow-none"><CardHeader><CardTitle>Recurring plans</CardTitle><CardDescription>Assigned worker and latest run report show here.</CardDescription></CardHeader><CardContent className="space-y-3">{recurringList.length ? recurringList.map((item) => {
+            const assignedWorker = workerList.find((user) => user.id === item.assignedTo)
+            const latestRun = [...(item.runHistory ?? [])].sort((left, right) => new Date(right.reportedAt ?? "").getTime() - new Date(left.reportedAt ?? "").getTime())[0]
+            return <div key={item._id} className="rounded-xl border p-4"><div className="flex flex-wrap gap-2"><p className="font-medium text-slate-950">{item.title}</p><Badge variant="outline">{item.frequency}</Badge><Badge variant={item.assignedTo ? "default" : "secondary"}>{assignedWorker?.fullName ?? "Unassigned"}</Badge></div><p className="mt-2 text-sm text-slate-600">{item.description ?? "No description"}</p><div className="mt-3 grid gap-3 rounded-xl bg-slate-50 p-3 text-sm sm:grid-cols-3"><div><p className="text-xs uppercase tracking-wide text-slate-500">Next run</p><p className="font-medium text-slate-950">{item.nextRunAt ? new Date(item.nextRunAt).toLocaleDateString() : "No date"}</p></div><div><p className="text-xs uppercase tracking-wide text-slate-500">Latest status</p><p className="font-medium text-slate-950">{latestRun?.status ?? "No report"}</p></div><div><p className="text-xs uppercase tracking-wide text-slate-500">Reported at</p><p className="font-medium text-slate-950">{latestRun?.reportedAt ? new Date(latestRun.reportedAt).toLocaleDateString() : "No report yet"}</p></div></div><div className="mt-3 rounded-xl border bg-white p-3"><p className="text-xs uppercase tracking-wide text-slate-500">Latest worker note</p><p className="mt-1 text-sm text-slate-700">{latestRun?.note ?? "Worker has not submitted report yet."}</p></div></div>
+          }) : <Empty><EmptyHeader><EmptyMedia variant="icon"><Repeat /></EmptyMedia><EmptyTitle>No recurring maintenance yet</EmptyTitle><EmptyDescription>Create first recurring maintenance from top sheet.</EmptyDescription></EmptyHeader></Empty>}</CardContent></Card>
+        </WithBone>
       </div>
-      <WithBone name="owner-page-recurring" loading={recurring.isLoading} fallback={<DashboardTableSkeleton />}>
-        <Card className="shadow-none"><CardHeader><CardTitle>Recurring plans</CardTitle><CardDescription>Active repeat maintenance.</CardDescription></CardHeader><CardContent className="space-y-3">{recurringList.length ? recurringList.map((item) => <div key={item._id} className="rounded-xl border p-4"><div className="flex flex-wrap gap-2"><p className="font-medium text-slate-950">{item.title}</p><Badge variant="outline">{item.frequency}</Badge></div><p className="mt-2 text-sm text-slate-600">{item.description ?? "No description"}</p></div>) : <Empty><EmptyHeader><EmptyMedia variant="icon"><Repeat /></EmptyMedia><EmptyTitle>No recurring maintenance yet</EmptyTitle><EmptyDescription>Create first recurring maintenance from top sheet.</EmptyDescription></EmptyHeader></Empty>}</CardContent></Card>
-      </WithBone>
-    </div>
-  )
-}
+    )
+  }
 
 export function TenantOwnerInspectionsPage() {
   const properties = useOwnerPropertiesQuery()
   const units = useOwnerUnitsQuery()
+  const users = useOwnerUsersQuery()
   const inspections = useOwnerInspectionsQuery()
   const createInspection = useOwnerCreateInspectionMutation()
   const [isCreateOpen, setIsCreateOpen] = useState(false)
   const [photoUrls, setPhotoUrls] = useState<string[]>([])
   const propertyList = Array.isArray(properties.data) ? properties.data : []
   const unitList = Array.isArray(units.data) ? units.data : []
+  const workerList = Array.isArray(users.data) ? users.data.filter((user) => user.role === "worker") : []
   const inspectionList = Array.isArray(inspections.data) ? inspections.data : []
-  const [form, setForm] = useState({ propertyId: "", unitId: "", type: "routine", scheduledAt: "", checklist: "", damageReport: "", notes: "", completed: false })
+  const [form, setForm] = useState({ propertyId: "", unitId: "", type: "routine", scheduledAt: "", assignedTo: "", checklist: "", damageReport: "", notes: "", completed: false })
 
   return (
     <div className="space-y-6">
-      <OwnerPageHero icon={ClipboardCheck} badge="Inspection" title="Inspections" body="Schedule move-in, move-out, or routine inspections with photos and checklist." />
+        <OwnerPageHero icon={ClipboardCheck} badge="Inspection" title="Inspections" body="Assign inspection to worker, then review worker report, photos, and completion here." />
       <div className="flex justify-end">
         <CreateSheet open={isCreateOpen} onOpenChange={setIsCreateOpen} title="Create inspection" description="Add checklist and upload photos." triggerLabel="Add inspection">
           <form className="space-y-4" onSubmit={(event) => {
             event.preventDefault()
             createInspection.mutate({
-              propertyId: form.propertyId,
-              unitId: form.unitId || undefined,
-              type: form.type,
-              scheduledAt: form.scheduledAt,
-              checklist: splitCsv(form.checklist),
-              photos: photoUrls,
-              damageReport: form.damageReport || undefined,
-              notes: form.notes || undefined,
-              completed: form.completed,
-            }, { onSuccess: () => {
-              setForm({ propertyId: "", unitId: "", type: "routine", scheduledAt: "", checklist: "", damageReport: "", notes: "", completed: false })
-              setPhotoUrls([])
-              setIsCreateOpen(false)
-            }})
+                propertyId: form.propertyId,
+                unitId: form.unitId || undefined,
+                type: form.type,
+                scheduledAt: form.scheduledAt,
+                assignedTo: form.assignedTo || undefined,
+                checklist: splitCsv(form.checklist),
+                photos: photoUrls,
+                damageReport: form.damageReport || undefined,
+                notes: form.notes || undefined,
+                completed: form.completed,
+              }, { onSuccess: () => {
+                setForm({ propertyId: "", unitId: "", type: "routine", scheduledAt: "", assignedTo: "", checklist: "", damageReport: "", notes: "", completed: false })
+                setPhotoUrls([])
+                setIsCreateOpen(false)
+              }})
           }}>
             <FieldGroup>
               <Field><FieldLabel>Property</FieldLabel><Select value={form.propertyId} onValueChange={(value) => setForm((current) => ({ ...current, propertyId: value ?? "" }))}><SelectTrigger className="w-full"><SelectValue placeholder="Select property" /></SelectTrigger><SelectContent><SelectGroup>{propertyList.map((property) => <SelectItem key={property._id} value={property._id}>{property.name}</SelectItem>)}</SelectGroup></SelectContent></Select></Field>
               <Field><FieldLabel>Unit (Optional)</FieldLabel><Select value={form.unitId} onValueChange={(value) => setForm((current) => ({ ...current, unitId: value ?? "" }))}><SelectTrigger className="w-full"><SelectValue placeholder="Select unit" /></SelectTrigger><SelectContent><SelectGroup>{unitList.map((unit) => <SelectItem key={unit._id} value={unit._id}>{unit.unitNumber}</SelectItem>)}</SelectGroup></SelectContent></Select></Field>
-              <Field><FieldLabel>Type</FieldLabel><Select value={form.type} onValueChange={(value) => setForm((current) => ({ ...current, type: value ?? "routine" }))}><SelectTrigger className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectGroup>{["move_in","move_out","routine"].map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}</SelectGroup></SelectContent></Select></Field>
-              <Field><FieldLabel>Scheduled date</FieldLabel><Input type="date" value={form.scheduledAt} onChange={(event) => setForm((current) => ({ ...current, scheduledAt: event.target.value ?? "" }))} /></Field>
-              <Field><FieldLabel>Checklist (Optional)</FieldLabel><Textarea value={form.checklist} onChange={(event) => setForm((current) => ({ ...current, checklist: event.target.value ?? "" }))} /><FieldDescription>Comma separated items</FieldDescription></Field>
-              <UploadCollectionField label="Inspection photos" accept="image/*" kind="image" values={photoUrls} onChange={setPhotoUrls} />
-              <Field><FieldLabel>Damage report (Optional)</FieldLabel><Textarea value={form.damageReport} onChange={(event) => setForm((current) => ({ ...current, damageReport: event.target.value ?? "" }))} /></Field>
-              <Field><FieldLabel>Notes (Optional)</FieldLabel><Textarea value={form.notes} onChange={(event) => setForm((current) => ({ ...current, notes: event.target.value ?? "" }))} /></Field>
-            </FieldGroup>
-            <Button type="submit" disabled={createInspection.isPending || !form.propertyId || !form.scheduledAt}>Create inspection</Button>
-          </form>
-        </CreateSheet>
+                <Field><FieldLabel>Type</FieldLabel><Select value={form.type} onValueChange={(value) => setForm((current) => ({ ...current, type: value ?? "routine" }))}><SelectTrigger className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectGroup>{["move_in","move_out","routine"].map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}</SelectGroup></SelectContent></Select></Field>
+                <Field><FieldLabel>Scheduled date</FieldLabel><Input type="date" value={form.scheduledAt} onChange={(event) => setForm((current) => ({ ...current, scheduledAt: event.target.value ?? "" }))} /></Field>
+                <Field><FieldLabel>Assign worker (Optional)</FieldLabel><Select value={form.assignedTo} onValueChange={(value) => setForm((current) => ({ ...current, assignedTo: value ?? "" }))}><SelectTrigger className="w-full"><SelectValue placeholder="Select worker" /></SelectTrigger><SelectContent><SelectGroup>{workerList.map((user) => <SelectItem key={user.id} value={user.id}>{user.fullName}</SelectItem>)}</SelectGroup></SelectContent></Select></Field>
+                <Field><FieldLabel>Checklist (Optional)</FieldLabel><Textarea value={form.checklist} onChange={(event) => setForm((current) => ({ ...current, checklist: event.target.value ?? "" }))} /><FieldDescription>Comma separated items</FieldDescription></Field>
+                <UploadCollectionField label="Inspection photos" accept="image/*" kind="image" values={photoUrls} onChange={setPhotoUrls} />
+                <Field><FieldLabel>Damage report (Optional)</FieldLabel><Textarea value={form.damageReport} onChange={(event) => setForm((current) => ({ ...current, damageReport: event.target.value ?? "" }))} /></Field>
+                <Field><FieldLabel>Notes (Optional)</FieldLabel><Textarea value={form.notes} onChange={(event) => setForm((current) => ({ ...current, notes: event.target.value ?? "" }))} /></Field>
+              </FieldGroup>
+              <Button type="submit" disabled={createInspection.isPending || !form.propertyId || !form.scheduledAt}>Create inspection</Button>
+            </form>
+          </CreateSheet>
+        </div>
+        <WithBone name="owner-page-inspections" loading={inspections.isLoading} fallback={<DashboardTableSkeleton />}>
+          <Card className="shadow-none"><CardHeader><CardTitle>Inspections</CardTitle><CardDescription>Assigned worker and worker report now visible here.</CardDescription></CardHeader><CardContent className="space-y-3">{inspectionList.length ? inspectionList.map((item) => {
+            const assignedWorker = workerList.find((user) => user.id === item.assignedTo)
+            return <div key={item._id} className="rounded-xl border p-4"><div className="flex flex-wrap gap-2"><p className="font-medium text-slate-950">{item.type}</p><Badge variant={item.completed ? "default" : "outline"}>{item.completed ? "Done" : "Pending"}</Badge><Badge variant={item.assignedTo ? "default" : "secondary"}>{assignedWorker?.fullName ?? "Unassigned"}</Badge></div><p className="mt-2 text-sm text-slate-600">{item.scheduledAt ? new Date(item.scheduledAt).toLocaleDateString() : "No date"}</p><div className="mt-3 grid gap-3 rounded-xl bg-slate-50 p-3 text-sm sm:grid-cols-3"><div><p className="text-xs uppercase tracking-wide text-slate-500">Worker report</p><p className="font-medium text-slate-950">{item.workerReport ?? "No report yet"}</p></div><div><p className="text-xs uppercase tracking-wide text-slate-500">Reported at</p><p className="font-medium text-slate-950">{item.workerReportedAt ? new Date(item.workerReportedAt).toLocaleDateString() : "Not submitted"}</p></div><div><p className="text-xs uppercase tracking-wide text-slate-500">Damage report</p><p className="font-medium text-slate-950">{item.damageReport ?? "No damage report"}</p></div></div></div>
+          }) : <Empty><EmptyHeader><EmptyMedia variant="icon"><ClipboardCheck /></EmptyMedia><EmptyTitle>No inspections yet</EmptyTitle><EmptyDescription>Create first inspection from top sheet.</EmptyDescription></EmptyHeader></Empty>}</CardContent></Card>
+        </WithBone>
       </div>
-      <WithBone name="owner-page-inspections" loading={inspections.isLoading} fallback={<DashboardTableSkeleton />}>
-        <Card className="shadow-none"><CardHeader><CardTitle>Inspections</CardTitle><CardDescription>Scheduled and completed inspections.</CardDescription></CardHeader><CardContent className="space-y-3">{inspectionList.length ? inspectionList.map((item) => <div key={item._id} className="rounded-xl border p-4"><div className="flex flex-wrap gap-2"><p className="font-medium text-slate-950">{item.type}</p><Badge variant={item.completed ? "default" : "outline"}>{item.completed ? "Done" : "Pending"}</Badge></div><p className="mt-2 text-sm text-slate-600">{item.scheduledAt ?? "No date"}</p></div>) : <Empty><EmptyHeader><EmptyMedia variant="icon"><ClipboardCheck /></EmptyMedia><EmptyTitle>No inspections yet</EmptyTitle><EmptyDescription>Create first inspection from top sheet.</EmptyDescription></EmptyHeader></Empty>}</CardContent></Card>
-      </WithBone>
-    </div>
-  )
-}
+    )
+  }
 
 export function TenantOwnerSettingsPage() {
   const { data: me, isLoading } = useMeQuery()
