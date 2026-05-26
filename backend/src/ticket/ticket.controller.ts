@@ -45,9 +45,16 @@ export class TicketController {
   }
 
   @Get()
-  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.TETENTWONER, UserRole.WORKER)
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.ADMIN,
+    UserRole.TETENTWONER,
+    UserRole.WORKER,
+    UserRole.RENTER,
+    UserRole.GUEST,
+  )
   async findAll(@Req() req: ExpressRequest, @Query() query: QueryTicketDto) {
-    const data = await this.ticketService.findAll(req.user.organizationId ?? '', query);
+    const data = await this.ticketService.findAll(req.user.organizationId ?? '', req.user, query);
     return new SuccessResponseDto(200, 'Ticket list fetched', data);
   }
 
@@ -61,7 +68,7 @@ export class TicketController {
     UserRole.GUEST,
   )
   async findById(@Req() req: ExpressRequest, @Param('id', MongoIdPipe) id: string) {
-    const data = await this.ticketService.findById(req.user.organizationId ?? '', id);
+    const data = await this.ticketService.findById(req.user.organizationId ?? '', req.user, id);
     return new SuccessResponseDto(200, 'Ticket fetched', data);
   }
 

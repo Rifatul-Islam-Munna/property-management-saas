@@ -11,6 +11,7 @@ import {
   Organization,
   OrganizationDocument,
 } from 'src/organization/entities/organization.entity';
+import { Property, PropertyDocument } from 'src/property/entities/property.entity';
 import { CreateAssignmentRequestDto } from './dto/create-assignment-request.dto';
 import { CreateUserDto } from './dto/create-user.dto';
 import { LinkGlobalUserDto } from './dto/link-global-user.dto';
@@ -108,6 +109,8 @@ export class UserService {
     @InjectModel(User.name) private readonly userModel: Model<UserDocument>,
     @InjectModel(Organization.name)
     private readonly organizationModel: Model<OrganizationDocument>,
+    @InjectModel(Property.name)
+    private readonly propertyModel: Model<PropertyDocument>,
     @InjectModel(AssignmentRequest.name)
     private readonly assignmentRequestModel: Model<AssignmentRequestDocument>,
     private readonly jwtService: JwtService,
@@ -305,7 +308,8 @@ export class UserService {
             $or: [{ targetUserId: actor.id }, { requesterUserId: actor.id }],
           };
 
-    return this.assignmentRequestModel.find(filter).sort({ createdAt: -1 }).lean();
+    const requests = await this.assignmentRequestModel.find(filter).sort({ createdAt: -1 }).lean();
+    return this.enrichAssignmentRequests(requests);
   }
 
   async updateAssignmentRequestStatus(
@@ -340,7 +344,59 @@ export class UserService {
     }
 
     await request.save();
-    return request.toObject();
+    return (await this.enrichAssignmentRequests([request.toObject()]))[0];
+  }
+
+  private async enrichAssignmentRequests(requests: any[]): Promise<any[]> {
+    const userIds = [...new Set(
+      requests.flatMap((item) => [item.requesterUserId, item.targetUserId, item.ownerUserId]).filter(Boolean))
+    ];
+    const propertyIds = [...new Set(requests.flatMap((item) => item.propertyIds ?? []).filter(Boolean))];
+
+    const [users, properties] = await Promise.all([
+      userIds.length ? this.userModel.find({ _id: { $in: userIds } }).lean() : [],
+      propertyIds.length ? this.propertyModel.find({ _id: { $in: propertyIds } }).lean() : [],
+    ]);
+
+    const userEntries: Array<[string, any]> = users.map((item) => [String(item._id), item] as [string, any]);
+    const propertyEntries: Array<[string, any]> = properties.map((item) => [String(item._id), item] as [string, any]);
+    const userMap = new Map<string, any>(userEntries);
+    const propertyMap = new Map<string, any>(propertyEntries);
+
+    return requests.map((item) => ({
+      ...item,
+      requesterUser: item.requesterUserId
+        ? (userMap.get(String(item.requesterUserId))
+            ? this.mapUser(userMap.get(String(item.requesterUserId)) as UserRecord)
+            : null)
+        : null,
+      targetUser: item.targetUserId
+        ? (userMap.get(String(item.targetUserId))
+            ? this.mapUser(userMap.get(String(item.targetUserId)) as UserRecord)
+            : null)
+        : null,
+      ownerUser: item.ownerUserId
+        ? (userMap.get(String(item.ownerUserId))
+            ? this.mapUser(userMap.get(String(item.ownerUserId)) as UserRecord)
+            : null)
+        : null,
+      properties: (item.propertyIds ?? []).map((propertyId: string) => {
+        const property = propertyMap.get(String(propertyId));
+        return property
+          ? {
+              _id: String(property._id),
+              name: property.name,
+              type: property.type,
+              address: property.address ?? null,
+            }
+          : {
+              _id: String(propertyId),
+              name: String(propertyId),
+              type: null,
+              address: null,
+            };
+      }),
+    }));
   }
 
   async createManagedUser(
@@ -772,19 +828,32 @@ export class UserService {
       throw new BadRequestException('Owner not found');
     }
 
-    await this.linkExistingGlobalUser(
-      {
-        id: String(owner._id),
-        email: owner.email,
-        role: owner.role,
-        organizationId: owner.organizationId ?? null,
-        status: owner.status,
-      },
-      {
-        userId,
-        propertyIds: request.propertyIds ?? [],
-      },
-    );
+    const user = await this.userModel.findById(userId);
+    if (!user) {
+      throw new BadRequestException('User not found');
+    }
+
+    if (!this.isGlobalRole(user.role)) {
+      throw new BadRequestException(
+        'Only worker, renter, and guest can be linked across owners/properties.',
+      );
+    }
+
+    user.firstAddedByOwnerId = user.firstAddedByOwnerId ?? String(owner._id);
+    this.applyOwnerAssignmentRules(user, String(owner._id));
+
+    const orgId = owner.organizationId ?? null;
+    if (orgId && !user.organizationIds.includes(orgId)) {
+      user.organizationIds.push(orgId);
+    }
+
+    if (!user.organizationId && orgId) {
+      user.organizationId = orgId;
+    }
+
+    this.applyPropertyAssignmentRules(user, request.propertyIds ?? []);
+    user.isGlobalProfile = true;
+    await user.save();
   }
 
   private async createOwnerOrganization(user: UserDocument): Promise<string> {

@@ -35,6 +35,15 @@ export class Inspection {
   @Prop({ type: String, default: null, index: true })
   assignedTo?: string | null;
 
+  @Prop({ type: Number, default: 0, min: 0 })
+  estimatedCost?: number | null;
+
+  @Prop({ type: Number, default: 0, min: 0 })
+  actualCost?: number | null;
+
+  @Prop({ type: String, default: 'usd' })
+  currency?: string | null;
+
   @Prop({ type: String, default: null })
   damageReport?: string | null;
 

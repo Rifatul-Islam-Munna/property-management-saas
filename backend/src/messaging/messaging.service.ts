@@ -35,11 +35,19 @@ export class MessagingService {
     return payload;
   }
 
-  async findMessages(organizationId: string, query: QueryMessageDto): Promise<any> {
+  async findMessages(organizationId: string, actor: JwtUser, query: QueryMessageDto): Promise<any> {
     const { page = 1, limit = 20, roomId, roomType } = query;
     const filter: Record<string, unknown> = { organizationId };
     if (roomId) filter.roomId = roomId;
     if (roomType) filter.roomType = roomType;
+
+    if (!['super_admin', 'admin', 'tetentwoner'].includes(actor.role)) {
+      filter.$or = [
+        { senderId: actor.id },
+        { recipientIds: actor.id },
+        { roomId: { $regex: actor.id } },
+      ];
+    }
 
     const [data, total] = await Promise.all([
       this.messageModel

@@ -56,6 +56,7 @@ function buildNav(role: string | undefined, pathname: string) {
           items: [
             { title: "Users", url: "/dashboard/tenant-owner/users", icon: <UsersIcon /> },
             { title: "Tenants", url: "/dashboard/tenant-owner/tenants", icon: <ShieldIcon /> },
+            { title: "Billing", url: "/dashboard/tenant-owner/billing", icon: <CreditCardIcon /> },
             { title: "Technicians", url: "/dashboard/tenant-owner/technicians", icon: <WrenchIcon /> },
           ],
         },
@@ -140,13 +141,51 @@ function buildNav(role: string | undefined, pathname: string) {
     brand: "Resident",
     navMain: [
       {
-        label: "Workspace",
+        label: "Overview",
         items: [
           { title: "Overview", url: "/dashboard/resident", icon: <LayoutDashboardIcon />, isActive: pathname === "/dashboard/resident" },
         ],
       },
+      {
+        label: "Portfolio",
+        items: [
+          { title: "Properties", url: "/dashboard/resident/properties", icon: <Building2Icon /> },
+          { title: "Units", url: "/dashboard/resident/units", icon: <HomeIcon /> },
+        ],
+      },
+      {
+        label: "People",
+        items: [
+          { title: "Users", url: "/dashboard/resident/users", icon: <UsersIcon /> },
+          { title: "Tenants", url: "/dashboard/resident/tenants", icon: <ShieldIcon /> },
+          { title: "Billing", url: "/dashboard/resident/billing", icon: <CreditCardIcon /> },
+          { title: "Technicians", url: "/dashboard/resident/technicians", icon: <WrenchIcon /> },
+        ],
+      },
+      {
+        label: "Communication",
+        items: [
+          { title: "Notices", url: "/dashboard/resident/notices", icon: <BellIcon /> },
+          { title: "Documents", url: "/dashboard/resident/documents", icon: <FileTextIcon /> },
+        ],
+      },
+      {
+        label: "Operations",
+        items: [
+          { title: "Vendors", url: "/dashboard/resident/vendors", icon: <BriefcaseBusinessIcon /> },
+          { title: "Tickets", url: "/dashboard/resident/tickets", icon: <CreditCardIcon /> },
+          { title: "Work Orders", url: "/dashboard/resident/work-orders", icon: <ClipboardCheckIcon /> },
+          { title: "Recurring", url: "/dashboard/resident/recurring", icon: <RepeatIcon /> },
+          { title: "Inspections", url: "/dashboard/resident/inspections", icon: <FileChartColumnIcon /> },
+        ],
+      },
+    ].map((section) => ({
+      ...section,
+      items: section.items.map((item) => ({ ...item, isActive: pathname === item.url })),
+    })),
+    navSecondary: [
+      { title: "Settings", url: "/dashboard/resident/settings", icon: <Settings2Icon />, isActive: pathname === "/dashboard/resident/settings" },
     ],
-    navSecondary: [],
   }
 }
 

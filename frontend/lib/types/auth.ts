@@ -5,11 +5,24 @@ export type AuthUser = {
   phoneNumber: string
   organizationId?: string | null
   organizationIds: string[]
+  jobTitle?: string | null
+  avatarUrl?: string | null
+  createdByUserId?: string | null
+  createdByRole?: "super_admin" | "admin" | "tetentwoner" | "worker" | "renter" | "guest" | null
+  firstAddedByOwnerId?: string | null
+  ownerIds?: string[]
+  activeOwnerId?: string | null
+  propertyIds?: string[]
+  activePropertyId?: string | null
+  isGlobalProfile?: boolean
   role: "super_admin" | "admin" | "tetentwoner" | "worker" | "renter" | "guest"
   status: "invited" | "active" | "suspended"
   subscriptionTier?: "starter" | "growth" | "enterprise" | null
   subscriptionRequired: boolean
   subscriptionActive: boolean
+  subscriptionStartsAt?: string | null
+  subscriptionEndsAt?: string | null
+  lastLoginAt?: string | null
 }
 
 export type AuthResponse = {

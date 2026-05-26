@@ -11,6 +11,7 @@ import { useQueryWrapper } from "@/api-hooks/react-query-wrapper"
 import type { ApiSuccessResponse } from "@/lib/types/api"
 import type { AuthResponse } from "@/lib/types/auth"
 import type {
+  BillItem,
   OrganizationItem,
   PlanItem,
   PropertyItem,
@@ -83,6 +84,30 @@ type TenantPayload = {
   oneTimeGuestFee?: number
   notes?: string
   isActive?: boolean
+}
+
+type BillPayload = {
+  tenantId: string
+  propertyId: string
+  unitId?: string
+  kind?: "rent" | "extra" | "utility" | "guest_fee" | "custom"
+  title: string
+  description?: string
+  amount: number
+  currency?: string
+  monthKey?: string
+  dueDate?: string
+  status?: "unpaid" | "paid" | "partial" | "waived" | "overdue"
+  attachments?: string[]
+  note?: string
+}
+
+type BillUpdatePayload = {
+  id: string
+  payload: {
+    status?: "unpaid" | "paid" | "partial" | "waived" | "overdue"
+    note?: string
+  }
 }
 
 type TechnicianPayload = {
@@ -243,6 +268,53 @@ export function useCreateTenantMutation() {
     successMessage: "Tenant created",
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["admin", "tenants"] })
+    },
+  })
+}
+
+export function useCreateBillMutation() {
+  const queryClient = useQueryClient()
+
+  return useCommonMutationApi<ApiSuccessResponse<BillItem>, BillPayload>({
+    url: "/bill",
+    method: "POST",
+    mutationKey: ["admin", "create", "bill"],
+    successMessage: "Bill created",
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["admin", "bills"] }),
+        queryClient.invalidateQueries({ queryKey: ["resident", "bills"] }),
+      ])
+    },
+  })
+}
+
+export function useUpdateBillMutation() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationKey: ["admin", "update", "bill"],
+    mutationFn: async ({ id, payload }: BillUpdatePayload) => {
+      const [data, error] = await patchRequest<ApiSuccessResponse<BillItem>, typeof payload>(
+        `/bill/${id}`,
+        payload
+      )
+
+      if (error || !data) {
+        throw new Error(error?.message ?? "Bill update failed")
+      }
+
+      return data
+    },
+    onSuccess: async () => {
+      toast.success("Bill updated")
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["admin", "bills"] }),
+        queryClient.invalidateQueries({ queryKey: ["resident", "bills"] }),
+      ])
+    },
+    onError: (error: Error) => {
+      toast.error(error.message)
     },
   })
 }

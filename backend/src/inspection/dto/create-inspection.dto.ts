@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsArray, IsBoolean, IsDateString, IsEnum, IsOptional, IsString } from 'class-validator';
+import { IsArray, IsBoolean, IsDateString, IsEnum, IsNumber, IsOptional, IsString, Min } from 'class-validator';
 import { InspectionType } from '../entities/inspection.entity';
 
 export class CreateInspectionDto {
@@ -36,6 +36,23 @@ export class CreateInspectionDto {
   @IsOptional()
   @IsString()
   assignedTo?: string;
+
+  @ApiPropertyOptional({ example: 80 })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  estimatedCost?: number;
+
+  @ApiPropertyOptional({ example: 65 })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  actualCost?: number;
+
+  @ApiPropertyOptional({ example: 'usd' })
+  @IsOptional()
+  @IsString()
+  currency?: string;
 
   @ApiPropertyOptional()
   @IsOptional()

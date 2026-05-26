@@ -5,7 +5,9 @@ import type { ApiSuccessResponse, PaginatedResult } from "@/lib/types/api"
 import type { AuthUser } from "@/lib/types/auth"
 import type {
   AnnouncementItem,
+  BillItem,
   DashboardMetrics,
+  FinanceEntryItem,
   OccupancyStats,
   InspectionItem,
   MessageItem,
@@ -58,6 +60,25 @@ export function useOwnerTechnicianStatsQuery() {
       select: (response) => response?.data,
     }
   )
+}
+
+export function useOwnerFinanceEntriesQuery(params?: {
+  kind?: "earning" | "expense"
+  status?: "pending" | "cleared" | "canceled"
+  propertyId?: string
+}) {
+  const searchParams = new URLSearchParams()
+  if (params?.kind) searchParams.set("kind", params.kind)
+  if (params?.status) searchParams.set("status", params.status)
+  if (params?.propertyId) searchParams.set("propertyId", params.propertyId)
+  const queryString = searchParams.toString()
+
+  return useQueryWrapper<
+    ApiSuccessResponse<PaginatedResult<FinanceEntryItem>>,
+    FinanceEntryItem[]
+  >(["owner", "finance-entries", params ?? {}], `/finance-entry${queryString ? `?${queryString}` : ""}`, {
+    select: (response) => response?.data?.data ?? [],
+  })
 }
 
 export function useOwnerUsersQuery() {
@@ -213,6 +234,29 @@ export function useOwnerVendorsQuery() {
     ApiSuccessResponse<PaginatedResult<VendorItem>>,
     VendorItem[]
   >(["owner", "vendors"], "/vendor", {
+    select: (response) => response?.data?.data ?? [],
+  })
+}
+
+export function useOwnerBillsQuery(params?: {
+  tenantId?: string
+  propertyId?: string
+  status?: string
+  kind?: string
+  monthKey?: string
+}) {
+  const searchParams = new URLSearchParams()
+  if (params?.tenantId) searchParams.set("tenantId", params.tenantId)
+  if (params?.propertyId) searchParams.set("propertyId", params.propertyId)
+  if (params?.status) searchParams.set("status", params.status)
+  if (params?.kind) searchParams.set("kind", params.kind)
+  if (params?.monthKey) searchParams.set("monthKey", params.monthKey)
+  const queryString = searchParams.toString()
+
+  return useQueryWrapper<
+    ApiSuccessResponse<PaginatedResult<BillItem>>,
+    BillItem[]
+  >(["owner", "bills", params ?? {}], `/bill${queryString ? `?${queryString}` : ""}`, {
     select: (response) => response?.data?.data ?? [],
   })
 }

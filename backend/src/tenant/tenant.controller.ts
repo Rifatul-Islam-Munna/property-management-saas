@@ -30,13 +30,49 @@ import { TenantService } from './tenant.service';
 export class TenantController {
   constructor(private readonly tenantService: TenantService) {}
 
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.ADMIN,
+    UserRole.TETENTWONER,
+    UserRole.RENTER,
+    UserRole.GUEST,
+  )
+  @Get('me')
+  async findCurrentTenantProfile(
+    @Req() req: ExpressRequest,
+  ): Promise<SuccessResponseDto<any>> {
+    const data = await this.tenantService.findCurrentTenantProfile(
+      req.user.organizationId ?? '',
+      req.user.id,
+      req.user.email,
+    );
+    return new SuccessResponseDto(200, 'Current tenant profile fetched', data);
+  }
+
+  @Roles(UserRole.RENTER, UserRole.GUEST)
+  @Post('leave')
+  async leaveCurrentTenantProfile(
+    @Req() req: ExpressRequest,
+  ): Promise<SuccessResponseDto<any>> {
+    const data = await this.tenantService.leaveCurrentTenantProfile(
+      req.user.organizationId ?? '',
+      req.user.id,
+      req.user.email,
+    );
+    return new SuccessResponseDto(200, 'Tenant profile left successfully', data);
+  }
+
   @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.TETENTWONER)
   @Post()
   async create(
     @Req() req: ExpressRequest,
     @Body() dto: CreateTenantDto,
   ): Promise<SuccessResponseDto<any>> {
-    const data = await this.tenantService.create(req.user.organizationId ?? '', dto);
+    const data = await this.tenantService.create(
+      req.user.organizationId ?? '',
+      req.user.id,
+      dto,
+    );
     return new SuccessResponseDto(201, 'Tenant created successfully', data);
   }
 
@@ -75,6 +111,7 @@ export class TenantController {
   ): Promise<SuccessResponseDto<any>> {
     const data = await this.tenantService.update(
       req.user.organizationId ?? '',
+      req.user.id,
       id,
       dto,
     );

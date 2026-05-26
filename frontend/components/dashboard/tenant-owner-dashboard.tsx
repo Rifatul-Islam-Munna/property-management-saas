@@ -1,13 +1,20 @@
 "use client"
 
-import { Bell, BriefcaseBusiness, Building2, ClipboardCheck, Home, Repeat, Users, Wrench } from "lucide-react"
+import { useState } from "react"
+import { Bell, BriefcaseBusiness, Building2, CalendarRange, ClipboardCheck, Home, Repeat, TrendingDown, TrendingUp, TriangleAlert, Users, WalletCards, Wrench } from "lucide-react"
+import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty"
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field"
+import { Input } from "@/components/ui/input"
+import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Textarea } from "@/components/ui/textarea"
+import { useOrganizationStripeSettingsQuery } from "@/hooks/use-organization-settings"
 import {
   DashboardPanelSkeleton,
   DashboardCardSkeleton,
@@ -17,6 +24,7 @@ import {
 import {
   useOwnerAnnouncementsQuery,
   useOwnerAnalyticsQuery,
+  useOwnerFinanceEntriesQuery,
   useOwnerInspectionsQuery,
   useOwnerOccupancyStatsQuery,
   useOwnerPropertiesQuery,
@@ -33,9 +41,12 @@ import {
 } from "@/hooks/use-owner-dashboard"
 import {
   useOwnerDeleteTechnicianMutation,
+  useOwnerDeleteFinanceEntryMutation,
   useOwnerDeleteTenantMutation,
   useOwnerDeleteUnitMutation,
+  useOwnerCreateFinanceEntryMutation,
   useOwnerTogglePropertyMutation,
+  useOwnerUpdateFinanceEntryMutation,
   useOwnerToggleTechnicianMutation,
   useOwnerToggleTenantMutation,
   useOwnerToggleUnitMutation,
@@ -63,8 +74,27 @@ function MetricCard({
   )
 }
 
+function formatMoney(value?: number | null, currency = "USD") {
+  return `${currency} ${value ?? 0}`
+}
+
+function resolveDisplayCurrency(currency: string | null | undefined, fallback = "USD") {
+  const normalized = currency?.trim()?.toUpperCase()
+  if (!normalized || normalized === "BDT") return fallback
+  return normalized
+}
+
+const DEFAULT_CURRENCY_OPTIONS = [
+  { value: "usd", label: "USD" },
+  { value: "bdt", label: "BDT" },
+  { value: "eur", label: "EUR" },
+  { value: "gbp", label: "GBP" },
+]
+
 export function TenantOwnerDashboard() {
   const analytics = useOwnerAnalyticsQuery()
+  const stripeSettings = useOrganizationStripeSettingsQuery()
+  const defaultCurrency = stripeSettings.data?.defaultCurrency?.toUpperCase() ?? "USD"
   const ticketStats = useOwnerTicketStatsQuery()
   const occupancy = useOwnerOccupancyStatsQuery()
   const technicianStats = useOwnerTechnicianStatsQuery()
@@ -75,6 +105,7 @@ export function TenantOwnerDashboard() {
   const technicians = useOwnerTechniciansQuery()
   const tickets = useOwnerTicketsQuery()
   const announcements = useOwnerAnnouncementsQuery()
+  const financeEntries = useOwnerFinanceEntriesQuery()
   const vendors = useOwnerVendorsQuery()
   const workOrders = useOwnerWorkOrdersQuery()
   const recurring = useOwnerRecurringMaintenancesQuery()
@@ -86,6 +117,9 @@ export function TenantOwnerDashboard() {
   const deleteUnit = useOwnerDeleteUnitMutation()
   const deleteTenant = useOwnerDeleteTenantMutation()
   const deleteTechnician = useOwnerDeleteTechnicianMutation()
+  const createFinanceEntry = useOwnerCreateFinanceEntryMutation()
+  const updateFinanceEntry = useOwnerUpdateFinanceEntryMutation()
+  const deleteFinanceEntry = useOwnerDeleteFinanceEntryMutation()
 
   const propertiesList = Array.isArray(properties.data) ? properties.data : []
   const unitsList = Array.isArray(units.data) ? units.data : []
@@ -94,6 +128,7 @@ export function TenantOwnerDashboard() {
   const techniciansList = Array.isArray(technicians.data) ? technicians.data : []
   const ticketsList = Array.isArray(tickets.data) ? tickets.data : []
   const announcementsList = Array.isArray(announcements.data) ? announcements.data : []
+  const financeList = Array.isArray(financeEntries.data) ? financeEntries.data : []
   const vendorsList = Array.isArray(vendors.data) ? vendors.data : []
   const workOrdersList = Array.isArray(workOrders.data) ? workOrders.data : []
   const recurringList = Array.isArray(recurring.data) ? recurring.data : []
@@ -109,7 +144,22 @@ export function TenantOwnerDashboard() {
     vendors.isLoading ||
     workOrders.isLoading ||
     recurring.isLoading ||
-    inspections.isLoading
+    inspections.isLoading ||
+    financeEntries.isLoading
+
+  const finance = analytics.data?.finance
+  const [financeForm, setFinanceForm] = useState({
+    kind: "expense",
+    title: "",
+    category: "",
+    amount: "",
+    currency: "usd",
+    occurredAt: new Date().toISOString().slice(0, 10),
+    propertyId: "",
+    description: "",
+    note: "",
+    status: "cleared",
+  })
 
   return (
     <div className="space-y-6">
@@ -133,7 +183,7 @@ export function TenantOwnerDashboard() {
               <div className="rounded-xl border bg-background px-4 py-3"><p className="text-slate-500">Users</p><p className="mt-1 text-lg font-semibold">{usersList.length ?? 0}</p></div>
               <div className="rounded-xl border bg-background px-4 py-3"><p className="text-slate-500">Tickets</p><p className="mt-1 text-lg font-semibold">{analytics.data?.openTickets ?? 0}</p></div>
               <div className="rounded-xl border bg-background px-4 py-3"><p className="text-slate-500">Vendors</p><p className="mt-1 text-lg font-semibold">{vendorsList.length ?? 0}</p></div>
-              <div className="rounded-xl border bg-background px-4 py-3"><p className="text-slate-500">Work orders</p><p className="mt-1 text-lg font-semibold">{workOrdersList.length ?? 0}</p></div>
+              <div className="rounded-xl border bg-background px-4 py-3"><p className="text-slate-500">Due amount</p><p className="mt-1 text-lg font-semibold">{formatMoney(finance?.dueAmount ?? 0, defaultCurrency)}</p></div>
             </div>
           </div>
         </section>
@@ -147,16 +197,17 @@ export function TenantOwnerDashboard() {
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-6">
           <MetricCard title="Occupancy" value={`${analytics.data?.occupancyRate ?? 0}%`} note={`${occupancy.data?.occupied ?? 0} occupied / ${analytics.data?.totalUnits ?? 0} units`} />
           <MetricCard title="Open tickets" value={analytics.data?.openTickets ?? 0} note={`${ticketStats.data?.byPriority?.length ?? 0} priority buckets`} />
-          <MetricCard title="Workers" value={usersList.filter((user) => user.role === "worker").length} note="Global workers linked to owner" />
-          <MetricCard title="Technicians" value={technicianStats.data?.activeTechnicians ?? 0} note={`${technicianStats.data?.totalTenants ?? 0} active tenants`} />
-          <MetricCard title="Vendors" value={vendorsList.length} note="Ready external service contacts" />
-          <MetricCard title="Recurring / inspection" value={`${recurringList.length} / ${inspectionsList.length}`} note={`${workOrdersList.length} work orders live`} />
+          <MetricCard title="Month earnings" value={formatMoney(finance?.currentMonthEarnings ?? 0, defaultCurrency)} note={`${finance?.earningsGrowthPct ?? 0}% vs last month`} />
+          <MetricCard title="Month expenses" value={formatMoney(finance?.currentMonthExpenses ?? 0, defaultCurrency)} note={`${finance?.expenseGrowthPct ?? 0}% vs last month`} />
+          <MetricCard title="Month net" value={formatMoney(finance?.currentMonthNet ?? 0, defaultCurrency)} note={`${finance?.overdueBills ?? 0} overdue bills`} />
+          <MetricCard title="Due ledger" value={formatMoney(finance?.dueAmount ?? 0, defaultCurrency)} note={`${finance?.unpaidBills ?? 0} unpaid bills`} />
         </div>
       </WithBone>
 
       <Tabs defaultValue="portfolio" className="space-y-4">
         <TabsList variant="line" className="w-full justify-start overflow-x-auto">
           <TabsTrigger value="portfolio">Portfolio</TabsTrigger>
+          <TabsTrigger value="finance">Finance</TabsTrigger>
           <TabsTrigger value="people">People</TabsTrigger>
           <TabsTrigger value="operations">Operations</TabsTrigger>
           <TabsTrigger value="notices">Notices</TabsTrigger>
@@ -219,6 +270,222 @@ export function TenantOwnerDashboard() {
               </Card>
             </WithBone>
           </div>
+        </TabsContent>
+
+        <TabsContent value="finance" className="space-y-4">
+          <div className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
+            <Card className="overflow-hidden border-slate-200 bg-[linear-gradient(145deg,#f8fbff_0%,#eef8f1_100%)] shadow-none">
+              <CardHeader>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge variant="outline" className="border-emerald-200 text-emerald-700">Analytics</Badge>
+                  <Badge variant="secondary">{finance?.monthlySeries?.length ?? 0} month view</Badge>
+                </div>
+                <CardTitle className="text-xl">Money map</CardTitle>
+                <CardDescription>Monthly earnings, expenses, due, growth, and issue pressure.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                  <div className="rounded-2xl border border-emerald-200 bg-white/80 p-4">
+                    <div className="flex items-center gap-2 text-emerald-700"><TrendingUp className="size-4" /> Earnings</div>
+                    <p className="mt-2 text-2xl font-semibold text-slate-950">{formatMoney(finance?.totalEarnings ?? 0, defaultCurrency)}</p>
+                    <p className="mt-1 text-xs text-slate-500">Paid bills plus manual earnings</p>
+                  </div>
+                  <div className="rounded-2xl border border-rose-200 bg-white/80 p-4">
+                    <div className="flex items-center gap-2 text-rose-700"><TrendingDown className="size-4" /> Expenses</div>
+                    <p className="mt-2 text-2xl font-semibold text-slate-950">{formatMoney(finance?.totalExpenses ?? 0, defaultCurrency)}</p>
+                    <p className="mt-1 text-xs text-slate-500">Outside spend like utility, repair, office</p>
+                  </div>
+                  <div className="rounded-2xl border border-blue-200 bg-white/80 p-4">
+                    <div className="flex items-center gap-2 text-blue-700"><WalletCards className="size-4" /> Net</div>
+                    <p className="mt-2 text-2xl font-semibold text-slate-950">{formatMoney(finance?.netIncome ?? 0, defaultCurrency)}</p>
+                    <p className="mt-1 text-xs text-slate-500">Earnings minus expenses</p>
+                  </div>
+                  <div className="rounded-2xl border border-amber-200 bg-white/80 p-4">
+                    <div className="flex items-center gap-2 text-amber-700"><TriangleAlert className="size-4" /> Due</div>
+                    <p className="mt-2 text-2xl font-semibold text-slate-950">{formatMoney(finance?.dueAmount ?? 0, defaultCurrency)}</p>
+                    <p className="mt-1 text-xs text-slate-500">{finance?.overdueBills ?? 0} overdue / {finance?.unpaidBills ?? 0} unpaid</p>
+                  </div>
+                </div>
+
+                  <div className="grid gap-4 lg:grid-cols-[1.15fr_0.85fr]">
+                  <div className="rounded-2xl border bg-white/85 p-4">
+                    <div className="mb-4 flex items-center gap-2">
+                      <CalendarRange className="size-4 text-slate-500" />
+                      <p className="text-sm font-medium text-slate-950">6-month trend</p>
+                    </div>
+                    <div className="h-72">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <AreaChart data={finance?.monthlySeries ?? []}>
+                          <defs>
+                            <linearGradient id="earningsFill" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="5%" stopColor="#10b981" stopOpacity={0.35} />
+                              <stop offset="95%" stopColor="#10b981" stopOpacity={0.04} />
+                            </linearGradient>
+                            <linearGradient id="expensesFill" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="5%" stopColor="#f43f5e" stopOpacity={0.28} />
+                              <stop offset="95%" stopColor="#f43f5e" stopOpacity={0.04} />
+                            </linearGradient>
+                          </defs>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                          <XAxis dataKey="month" tick={{ fontSize: 12 }} />
+                          <YAxis tick={{ fontSize: 12 }} />
+                          <Tooltip />
+                          <Area type="monotone" dataKey="earnings" stroke="#10b981" fill="url(#earningsFill)" strokeWidth={2} />
+                          <Area type="monotone" dataKey="expenses" stroke="#f43f5e" fill="url(#expensesFill)" strokeWidth={2} />
+                          <Area type="monotone" dataKey="due" stroke="#f59e0b" fill="transparent" strokeWidth={2} />
+                        </AreaChart>
+                      </ResponsiveContainer>
+                    </div>
+                    <div className="mt-4 grid gap-2 sm:grid-cols-3">
+                      {(finance?.monthlySeries ?? []).slice(-3).map((item) => (
+                        <div key={item.month} className="rounded-xl border border-slate-200 p-3 text-xs text-slate-600">
+                          <p className="font-medium text-slate-950">{item.month}</p>
+                          <p className="mt-1">E {formatMoney(item.earnings, defaultCurrency)}</p>
+                          <p>X {formatMoney(item.expenses, defaultCurrency)}</p>
+                          <p>D {formatMoney(item.due, defaultCurrency)}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="space-y-4">
+                    <div className="rounded-2xl border bg-white/85 p-4">
+                      <p className="text-sm font-medium text-slate-950">Issue detector</p>
+                      <div className="mt-3 space-y-2">
+                        {(finance?.issueSummary ?? []).map((issue) => (
+                          <div key={issue.label} className="rounded-xl border p-3 text-sm">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="font-medium text-slate-950">{issue.label}</span>
+                              <Badge variant="outline">{issue.count}</Badge>
+                            </div>
+                            <p className="mt-1 text-xs text-slate-500">{issue.amount ? formatMoney(issue.amount, defaultCurrency) : "Ops count issue"}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="rounded-2xl border bg-white/85 p-4">
+                      <p className="text-sm font-medium text-slate-950">Ops cost details</p>
+                      <div className="mt-3 grid gap-3">
+                        <div className="rounded-xl border p-3 text-sm">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="font-medium text-slate-950">Work orders</span>
+                            <Badge variant="outline">{finance?.opsCosts?.workOrders?.count ?? 0}</Badge>
+                          </div>
+                          <p className="mt-1 text-xs text-slate-500">Estimated {formatMoney(finance?.opsCosts?.workOrders?.estimated ?? 0, defaultCurrency)} | Actual {formatMoney(finance?.opsCosts?.workOrders?.actual ?? 0, defaultCurrency)}</p>
+                        </div>
+                        <div className="rounded-xl border p-3 text-sm">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="font-medium text-slate-950">Inspections</span>
+                            <Badge variant="outline">{finance?.opsCosts?.inspections?.count ?? 0}</Badge>
+                          </div>
+                          <p className="mt-1 text-xs text-slate-500">Estimated {formatMoney(finance?.opsCosts?.inspections?.estimated ?? 0, defaultCurrency)} | Actual {formatMoney(finance?.opsCosts?.inspections?.actual ?? 0, defaultCurrency)}</p>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="rounded-2xl border bg-white/85 p-4">
+                      <p className="text-sm font-medium text-slate-950">Top categories</p>
+                      <div className="mt-3 space-y-3">
+                        <div>
+                          <p className="text-xs uppercase tracking-wide text-slate-500">Expense pressure</p>
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            {(finance?.topExpenseCategories ?? []).length ? (finance?.topExpenseCategories ?? []).map((item) => <Badge key={`${item.label}-${item.total}`} variant="outline">{item.label}: {formatMoney(item.total, defaultCurrency)}</Badge>) : <span className="text-xs text-slate-500">No expenses yet</span>}
+                          </div>
+                        </div>
+                        <div>
+                          <p className="text-xs uppercase tracking-wide text-slate-500">Extra earnings</p>
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            {(finance?.topEarningCategories ?? []).length ? (finance?.topEarningCategories ?? []).map((item) => <Badge key={`${item.label}-${item.total}`} variant="secondary">{item.label}: {formatMoney(item.total, defaultCurrency)}</Badge>) : <span className="text-xs text-slate-500">No earnings yet</span>}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="shadow-none">
+              <CardHeader>
+                <CardTitle>Add earning or expense</CardTitle>
+                <CardDescription>Outside finance rows not tied directly to resident bill.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <form
+                  className="space-y-4"
+                  onSubmit={(event) => {
+                    event.preventDefault()
+                    createFinanceEntry.mutate({
+                      kind: financeForm.kind as "earning" | "expense",
+                      title: financeForm.title,
+                      category: financeForm.category,
+                      amount: Number(financeForm.amount || "0"),
+                      currency: financeForm.currency || undefined,
+                      occurredAt: new Date(financeForm.occurredAt).toISOString(),
+                      propertyId: financeForm.propertyId || undefined,
+                      description: financeForm.description || undefined,
+                      note: financeForm.note || undefined,
+                      status: financeForm.status as "pending" | "cleared" | "canceled",
+                    }, {
+                      onSuccess: () => setFinanceForm({
+                        kind: "expense",
+                        title: "",
+                        category: "",
+                        amount: "",
+                        currency: "usd",
+                        occurredAt: new Date().toISOString().slice(0, 10),
+                        propertyId: "",
+                        description: "",
+                        note: "",
+                        status: "cleared",
+                      }),
+                    })
+                  }}
+                >
+                  <FieldGroup>
+                    <Field><FieldLabel>Kind</FieldLabel><div className="grid grid-cols-2 gap-2"><Button type="button" variant={financeForm.kind === "earning" ? "default" : "outline"} className="shadow-none" onClick={() => setFinanceForm((current) => ({ ...current, kind: "earning" }))}>Earning</Button><Button type="button" variant={financeForm.kind === "expense" ? "default" : "outline"} className="shadow-none" onClick={() => setFinanceForm((current) => ({ ...current, kind: "expense" }))}>Expense</Button></div></Field>
+                    <Field><FieldLabel>Title</FieldLabel><Input value={financeForm.title} onChange={(event) => setFinanceForm((current) => ({ ...current, title: event.target.value ?? "" }))} /></Field>
+                    <Field><FieldLabel>Category</FieldLabel><Input placeholder="utility, repair, owner_funding" value={financeForm.category} onChange={(event) => setFinanceForm((current) => ({ ...current, category: event.target.value ?? "" }))} /></Field>
+                    <Field><FieldLabel>Amount</FieldLabel><Input type="number" value={financeForm.amount} onChange={(event) => setFinanceForm((current) => ({ ...current, amount: event.target.value ?? "" }))} /></Field>
+                    <Field><FieldLabel>Date</FieldLabel><Input type="date" value={financeForm.occurredAt} onChange={(event) => setFinanceForm((current) => ({ ...current, occurredAt: event.target.value ?? "" }))} /></Field>
+                    <Field><FieldLabel>Status</FieldLabel><div className="grid grid-cols-3 gap-2"><Button type="button" variant={financeForm.status === "pending" ? "default" : "outline"} className="shadow-none" onClick={() => setFinanceForm((current) => ({ ...current, status: "pending" }))}>Pending</Button><Button type="button" variant={financeForm.status === "cleared" ? "default" : "outline"} className="shadow-none" onClick={() => setFinanceForm((current) => ({ ...current, status: "cleared" }))}>Cleared</Button><Button type="button" variant={financeForm.status === "canceled" ? "default" : "outline"} className="shadow-none" onClick={() => setFinanceForm((current) => ({ ...current, status: "canceled" }))}>Canceled</Button></div></Field>
+                    <Field><FieldLabel>Property (Optional)</FieldLabel><Select value={financeForm.propertyId} onValueChange={(value) => setFinanceForm((current) => ({ ...current, propertyId: value ?? "" }))}><SelectTrigger className="w-full"><SelectValue placeholder="Select property" /></SelectTrigger><SelectContent><SelectGroup>{propertiesList.map((property) => <SelectItem key={property._id} value={property._id}>{property.name}</SelectItem>)}</SelectGroup></SelectContent></Select></Field>
+                    <Field><FieldLabel>Currency</FieldLabel><Select value={financeForm.currency} onValueChange={(value) => setFinanceForm((current) => ({ ...current, currency: value ?? "usd" }))}><SelectTrigger className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectGroup>{DEFAULT_CURRENCY_OPTIONS.map((item) => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}</SelectGroup></SelectContent></Select></Field>
+                    <Field><FieldLabel>Description</FieldLabel><Textarea value={financeForm.description} onChange={(event) => setFinanceForm((current) => ({ ...current, description: event.target.value ?? "" }))} /></Field>
+                    <Field><FieldLabel>Note</FieldLabel><Textarea value={financeForm.note} onChange={(event) => setFinanceForm((current) => ({ ...current, note: event.target.value ?? "" }))} /></Field>
+                  </FieldGroup>
+                  <Button type="submit" disabled={createFinanceEntry.isPending || !financeForm.title || !financeForm.category || !financeForm.amount}>Save finance entry</Button>
+                </form>
+              </CardContent>
+            </Card>
+          </div>
+
+          <Card className="shadow-none">
+            <CardHeader>
+              <CardTitle>Recent ledger</CardTitle>
+              <CardDescription>Quick mobile list for owner-added earnings and expenses.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {financeList.length ? financeList.slice(0, 12).map((item) => (
+                <div key={item._id} className="rounded-2xl border p-4">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="font-medium text-slate-950">{item.title}</p>
+                    <Badge variant={item.kind === "earning" ? "secondary" : "outline"}>{item.kind}</Badge>
+                    <Badge>{item.status}</Badge>
+                  </div>
+                  <p className="mt-2 text-sm text-slate-600">{item.category} | {new Date(item.occurredAt).toLocaleDateString()}</p>
+                  <p className="mt-2 text-lg font-semibold text-slate-950">{formatMoney(item.amount, resolveDisplayCurrency(item.currency, defaultCurrency))}</p>
+                  <p className="mt-1 text-xs text-slate-500">{item.description ?? item.note ?? "No extra note"}</p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <Button type="button" size="sm" variant="outline" className="shadow-none" onClick={() => updateFinanceEntry.mutate({ id: item._id, payload: { status: "cleared" } })}>Mark cleared</Button>
+                    <Button type="button" size="sm" variant="outline" className="shadow-none" onClick={() => updateFinanceEntry.mutate({ id: item._id, payload: { status: "canceled" } })}>Cancel</Button>
+                    <Button type="button" size="sm" variant="outline" className="shadow-none" onClick={() => deleteFinanceEntry.mutate(item._id)}>Delete</Button>
+                  </div>
+                </div>
+              )) : (
+                <Empty><EmptyHeader><EmptyMedia variant="icon"><WalletCards /></EmptyMedia><EmptyTitle>No finance entries yet</EmptyTitle><EmptyDescription>Add outside earnings or expenses to unlock analytics.</EmptyDescription></EmptyHeader></Empty>
+              )}
+            </CardContent>
+          </Card>
         </TabsContent>
 
         <TabsContent value="people" className="space-y-4">

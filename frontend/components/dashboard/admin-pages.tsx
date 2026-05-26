@@ -9,12 +9,15 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty"
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
+import { UploadCollectionField } from "@/components/shared/upload-collection-field"
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
 import { DashboardPanelSkeleton, DashboardTableSkeleton, WithBone } from "@/components/dashboard/dashboard-loading"
 import { useMeQuery } from "@/hooks/use-auth"
+import { useOrganizationStripeSettingsQuery } from "@/hooks/use-organization-settings"
 import {
+  useCreateBillMutation,
   useCreateOrganizationMutation,
   useCreatePlanMutation,
   useCreatePropertyMutation,
@@ -33,18 +36,31 @@ import {
   useTogglePropertyMutation,
   useToggleTechnicianMutation,
   useToggleTenantMutation,
+  useUpdateBillMutation,
 } from "@/hooks/use-admin-actions"
 import {
+  useAdminBillsQuery,
   useOrganizationsQuery,
   usePlansQuery,
   usePropertiesQuery,
   useTechniciansQuery,
   useTenantsQuery,
+  useUnitsQuery,
   useUsersQuery,
 } from "@/hooks/use-admin-dashboard"
 
 function splitCsv(value?: string) {
   return value?.split(",").map((item) => item.trim()).filter(Boolean) ?? []
+}
+
+function formatMoney(value?: number | null, currency = "USD") {
+  return `${currency} ${value ?? 0}`
+}
+
+function resolveDisplayCurrency(currency: string | null | undefined, fallback = "USD") {
+  const normalized = currency?.trim()?.toUpperCase()
+  if (!normalized || normalized === "BDT") return fallback
+  return normalized
 }
 
 function AdminPageHero({
@@ -522,17 +538,27 @@ export function AdminPropertiesPage() {
 
 export function AdminTenantsPage() {
   const { data: me } = useMeQuery()
+  const stripeSettings = useOrganizationStripeSettingsQuery(Boolean(me?.organizationId))
+  const defaultCurrency = stripeSettings.data?.defaultCurrency?.toUpperCase() ?? "USD"
   const properties = usePropertiesQuery()
+  const units = useUnitsQuery()
   const tenants = useTenantsQuery()
+  const bills = useAdminBillsQuery()
   const createTenant = useCreateTenantMutation()
+  const createBill = useCreateBillMutation()
   const toggleTenant = useToggleTenantMutation()
   const deleteTenant = useDeleteTenantMutation()
+  const updateBill = useUpdateBillMutation()
   const propertyList = Array.isArray(properties.data) ? properties.data : []
+  const unitList = Array.isArray(units.data) ? units.data : []
   const tenantList = Array.isArray(tenants.data) ? tenants.data : []
+  const billList = Array.isArray(bills.data) ? bills.data : []
   const canUseOrgScopedRoutes = Boolean(me?.organizationId ?? "")
+  const [billFiles, setBillFiles] = useState<string[]>([])
   const [form, setForm] = useState({
     tenantKind: "renter",
     propertyId: "",
+    unitId: "",
     fullName: "",
     email: "",
     phone: "",
@@ -540,19 +566,28 @@ export function AdminTenantsPage() {
     monthlyRent: "",
     oneTimeGuestFee: "",
   })
-
+  const [billForm, setBillForm] = useState({
+    tenantId: "",
+    kind: "extra",
+    title: "",
+    amount: "",
+    dueDate: "",
+    monthKey: "",
+    description: "",
+  })
   return (
     <div className="space-y-6 px-4 lg:px-6">
       <AdminPageHero icon={Shield} badge="Residents" title="Tenants" body="Create renter or guest records and manage active resident data." />
       <div className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
         <Card className="shadow-none">
-          <CardHeader><CardTitle>Create tenant</CardTitle><CardDescription>Renter or guest under selected property.</CardDescription></CardHeader>
+          <CardHeader><CardTitle>Create tenant</CardTitle><CardDescription>Renter or guest under selected property and unit.</CardDescription></CardHeader>
           <CardContent>
             <form className="space-y-4" onSubmit={(event) => {
               event.preventDefault()
               createTenant.mutate({
                 tenantKind: form.tenantKind as "renter" | "guest",
                 propertyId: form.propertyId,
+                unitId: form.unitId || undefined,
                 fullName: form.fullName,
                 email: form.email,
                 phone: form.phone,
@@ -565,6 +600,10 @@ export function AdminTenantsPage() {
               <FieldGroup>
                 <Field><FieldLabel>Kind</FieldLabel><Select value={form.tenantKind} onValueChange={(value) => setForm((current) => ({ ...current, tenantKind: value ?? "renter" }))}><SelectTrigger className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectGroup>{["renter","guest"].map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}</SelectGroup></SelectContent></Select></Field>
                 <Field><FieldLabel>Property</FieldLabel><Select value={form.propertyId} onValueChange={(value) => setForm((current) => ({ ...current, propertyId: value ?? "" }))}><SelectTrigger className="w-full"><SelectValue placeholder="Select property" /></SelectTrigger><SelectContent><SelectGroup>{propertyList.map((property) => <SelectItem key={property._id} value={property._id}>{property.name}</SelectItem>)}</SelectGroup></SelectContent></Select></Field>
+                <Field><FieldLabel>Unit (Optional)</FieldLabel><Select value={form.unitId} onValueChange={(value) => {
+                  const nextUnit = unitList.find((unit) => unit._id === (value ?? ""))
+                  setForm((current) => ({ ...current, unitId: value ?? "", monthlyRent: current.tenantKind === "renter" ? String(nextUnit?.monthlyRent ?? current.monthlyRent ?? "") : current.monthlyRent }))
+                }}><SelectTrigger className="w-full"><SelectValue placeholder="Select unit" /></SelectTrigger><SelectContent><SelectGroup>{unitList.filter((unit) => !form.propertyId || unit.propertyId === form.propertyId).map((unit) => <SelectItem key={unit._id} value={unit._id}>{unit.unitNumber}</SelectItem>)}</SelectGroup></SelectContent></Select></Field>
                 <Field><FieldLabel>Full name</FieldLabel><Input value={form.fullName} onChange={(event) => setForm((current) => ({ ...current, fullName: event.target.value ?? "" }))} /></Field>
                 <Field><FieldLabel>Email</FieldLabel><Input type="email" value={form.email} onChange={(event) => setForm((current) => ({ ...current, email: event.target.value ?? "" }))} /></Field>
                 <Field><FieldLabel>Phone</FieldLabel><Input value={form.phone} onChange={(event) => setForm((current) => ({ ...current, phone: event.target.value ?? "" }))} /></Field>
@@ -577,8 +616,43 @@ export function AdminTenantsPage() {
 
         <WithBone name="admin-page-tenants" loading={tenants.isLoading} fallback={<DashboardTableSkeleton />}>
           <Card className="shadow-none">
-            <CardHeader><CardTitle>Tenant list</CardTitle><CardDescription>Platform resident records.</CardDescription></CardHeader>
+            <CardHeader><CardTitle>Tenant list</CardTitle><CardDescription>Platform resident records plus sent bill ledger.</CardDescription></CardHeader>
             <CardContent className="space-y-3">
+              <div className="rounded-xl border bg-slate-50 p-4">
+                <p className="text-sm font-medium text-slate-950">Send bill</p>
+                <div className="mt-3 grid gap-3 md:grid-cols-2">
+                  <Field><FieldLabel>Resident</FieldLabel><Select value={billForm.tenantId} onValueChange={(value) => setBillForm((current) => ({ ...current, tenantId: value ?? "" }))}><SelectTrigger className="w-full"><SelectValue placeholder="Select resident" /></SelectTrigger><SelectContent><SelectGroup>{tenantList.map((tenant) => <SelectItem key={tenant._id} value={tenant._id}>{tenant.fullName}</SelectItem>)}</SelectGroup></SelectContent></Select></Field>
+                  <Field><FieldLabel>Kind</FieldLabel><Select value={billForm.kind} onValueChange={(value) => setBillForm((current) => ({ ...current, kind: value ?? "extra" }))}><SelectTrigger className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectGroup>{["rent","utility","extra","guest_fee","custom"].map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}</SelectGroup></SelectContent></Select></Field>
+                  <Field><FieldLabel>Title</FieldLabel><Input value={billForm.title} onChange={(event) => setBillForm((current) => ({ ...current, title: event.target.value ?? "" }))} /></Field>
+                  <Field><FieldLabel>Amount</FieldLabel><Input type="number" value={billForm.amount} onChange={(event) => setBillForm((current) => ({ ...current, amount: event.target.value ?? "" }))} /></Field>
+                  <Field><FieldLabel>Month key</FieldLabel><Input type="month" value={billForm.monthKey} onChange={(event) => setBillForm((current) => ({ ...current, monthKey: event.target.value ?? "" }))} /></Field>
+                  <Field><FieldLabel>Due date</FieldLabel><Input type="date" value={billForm.dueDate} onChange={(event) => setBillForm((current) => ({ ...current, dueDate: event.target.value ?? "" }))} /></Field>
+                  <Field className="md:col-span-2"><FieldLabel>Description</FieldLabel><Textarea value={billForm.description} onChange={(event) => setBillForm((current) => ({ ...current, description: event.target.value ?? "" }))} /></Field>
+                  <div className="md:col-span-2"><UploadCollectionField label="Bill files" accept=".pdf,.doc,.docx,.xls,.xlsx,image/*" kind="file" values={billFiles} onChange={setBillFiles} /></div>
+                </div>
+                <Button
+                  className="mt-3"
+                  disabled={createBill.isPending || !billForm.tenantId || !billForm.title || !billForm.amount}
+                  onClick={() => {
+                    const tenant = tenantList.find((item) => item._id === billForm.tenantId)
+                    if (!tenant) return
+                    createBill.mutate({
+                      tenantId: tenant._id,
+                      propertyId: tenant.propertyId ?? "",
+                      unitId: tenant.unitId ?? undefined,
+                      kind: billForm.kind as "rent" | "extra" | "utility" | "guest_fee" | "custom",
+                      title: billForm.title,
+                      amount: Number(billForm.amount || "0"),
+                      monthKey: billForm.monthKey || undefined,
+                      dueDate: billForm.dueDate || undefined,
+                      description: billForm.description || undefined,
+                      attachments: billFiles,
+                    })
+                  }}
+                >
+                  Send bill
+                </Button>
+              </div>
               {tenantList.length ? tenantList.map((tenant) => (
                 <div key={tenant._id} className="flex flex-col gap-3 rounded-xl border p-4">
                   <div className="flex flex-wrap items-center gap-2">
@@ -586,6 +660,27 @@ export function AdminTenantsPage() {
                     <Badge variant="outline">{tenant.tenantKind ?? "resident"}</Badge>
                   </div>
                   <p className="text-sm text-slate-600">{tenant.email ?? "No email"}</p>
+                  <p className="text-xs text-slate-500">Rent: {formatMoney(tenant.monthlyRent, defaultCurrency)} | Guest fee: {formatMoney(tenant.oneTimeGuestFee, defaultCurrency)}</p>
+                  <div className="rounded-xl border bg-white p-3">
+                    <p className="mb-2 text-sm font-medium text-slate-950">Bills</p>
+                    {billList.filter((bill) => bill.tenantId === tenant._id).slice(0, 3).length ? billList.filter((bill) => bill.tenantId === tenant._id).slice(0, 3).map((bill) => (
+                      <div key={bill._id} className="mb-2 rounded-lg border p-3 text-xs">
+                        <div className="flex flex-wrap gap-2">
+                          <p className="font-medium text-slate-950">{bill.title}</p>
+                          <Badge variant="outline">{bill.kind}</Badge>
+                          <Badge>{bill.status}</Badge>
+                        </div>
+                        <p className="mt-1 text-slate-600">{formatMoney(bill.amount, resolveDisplayCurrency(bill.currency, defaultCurrency))}</p>
+                        <p className="mt-1 text-slate-500">Mode: {bill.paymentMode ?? "manual"} {bill.stripeCheckoutStatus ? `| Stripe: ${bill.stripeCheckoutStatus}` : ""}</p>
+                        <div className="mt-2 flex gap-2">
+                          <Button type="button" size="sm" variant="outline" className="shadow-none" onClick={() => updateBill.mutate({ id: bill._id, payload: { status: "paid" } })}>Paid</Button>
+                          <Button type="button" size="sm" variant="outline" className="shadow-none" onClick={() => updateBill.mutate({ id: bill._id, payload: { status: "unpaid" } })}>Unpaid</Button>
+                          {bill.stripeHostedInvoiceUrl ? <a href={bill.stripeHostedInvoiceUrl} target="_blank" rel="noreferrer" className="inline-flex items-center rounded-lg border px-3 py-1.5 text-xs text-blue-700">Stripe invoice</a> : null}
+                          {bill.stripeInvoicePdf ? <a href={bill.stripeInvoicePdf} target="_blank" rel="noreferrer" className="inline-flex items-center rounded-lg border px-3 py-1.5 text-xs text-blue-700">Invoice PDF</a> : null}
+                        </div>
+                      </div>
+                    )) : <p className="text-xs text-slate-500">No bills sent.</p>}
+                  </div>
                   <div className="flex items-center gap-2">
                     <Switch checked={tenant.isActive ?? false} onCheckedChange={(checked) => toggleTenant.mutate({ id: tenant._id, payload: { isActive: checked ?? false } })} />
                     <Button variant="outline" size="sm" className="shadow-none" onClick={() => deleteTenant.mutate(tenant._id)}>Delete</Button>

@@ -14,6 +14,7 @@ import {
   TicketDocument,
   TicketStatus,
 } from './entities/ticket.entity';
+import { UserRole } from 'src/user/entities/user.entity';
 
 @Injectable()
 export class TicketService {
@@ -40,7 +41,7 @@ export class TicketService {
     return ticket.toObject();
   }
 
-  async findAll(organizationId: string, query: QueryTicketDto) {
+  async findAll(organizationId: string, actor: JwtUser, query: QueryTicketDto) {
     const {
       page = 1,
       limit = 20,
@@ -55,6 +56,14 @@ export class TicketService {
     } = query;
     const filter: Record<string, unknown> = { organizationId };
 
+    if (actor.role === UserRole.WORKER) {
+      filter.assignedTo = actor.id;
+    }
+
+    if (actor.role === UserRole.RENTER || actor.role === UserRole.GUEST) {
+      filter.createdBy = actor.id;
+    }
+
     if (search) {
       filter.$or = [
         { title: { $regex: search, $options: 'i' } },
@@ -63,7 +72,7 @@ export class TicketService {
     }
 
     if (propertyId) filter.propertyId = propertyId;
-    if (assignedTo) filter.assignedTo = assignedTo;
+    if (assignedTo && actor.role !== UserRole.WORKER) filter.assignedTo = assignedTo;
     if (status) filter.status = status;
     if (priority) filter.priority = priority;
     if (category) filter.category = category;
@@ -92,12 +101,11 @@ export class TicketService {
     };
   }
 
-  async findById(organizationId: string, id: string) {
-    const ticket = await this.ticketModel
-      .findOne({ _id: id, organizationId })
-      .lean();
+  async findById(organizationId: string, actor: JwtUser, id: string) {
+    const ticket = await this.ticketModel.findOne({ _id: id, organizationId }).lean();
 
     if (!ticket) throw new NotFoundException('Ticket not found');
+    this.assertActorCanAccess(ticket, actor);
 
     return ticket;
   }
@@ -106,12 +114,21 @@ export class TicketService {
     const existing = await this.ticketModel.findOne({ _id: id, organizationId });
 
     if (!existing) throw new NotFoundException('Ticket not found');
+    this.assertActorCanAccess(existing.toObject(), actor);
 
-    if (dto.status === TicketStatus.COMPLETED && !existing.resolvedAt) {
+    const updatePayload =
+      actor.role === UserRole.WORKER
+        ? {
+            status: dto.status,
+            actualCost: dto.actualCost,
+          }
+        : dto;
+
+    if (updatePayload.status === TicketStatus.COMPLETED && !existing.resolvedAt) {
       existing.resolvedAt = new Date();
     }
 
-    Object.assign(existing, dto);
+    Object.assign(existing, updatePayload);
     existing.timeline.push({
       action: 'updated',
       performedBy: actor.id,
@@ -155,6 +172,7 @@ export class TicketService {
     const ticket = await this.ticketModel.findOne({ _id: id, organizationId });
 
     if (!ticket) throw new NotFoundException('Ticket not found');
+    this.assertActorCanAccess(ticket.toObject(), actor);
 
     ticket.comments.push({
       userId: actor.id,
@@ -182,6 +200,7 @@ export class TicketService {
     const ticket = await this.ticketModel.findOne({ _id: id, organizationId });
 
     if (!ticket) throw new NotFoundException('Ticket not found');
+    this.assertActorCanAccess(ticket.toObject(), actor);
 
     ticket.internalNotes.push({
       userId: actor.id,
@@ -209,5 +228,24 @@ export class TicketService {
     if (!deleted) throw new NotFoundException('Ticket not found');
 
     return { deleted: true };
+  }
+
+  private assertActorCanAccess(
+    ticket: { assignedTo?: string | null; createdBy: string },
+    actor: JwtUser,
+  ) {
+    if ([UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.TETENTWONER].includes(actor.role)) {
+      return;
+    }
+
+    if (actor.role === UserRole.WORKER && ticket.assignedTo === actor.id) {
+      return;
+    }
+
+    if ([UserRole.RENTER, UserRole.GUEST].includes(actor.role) && ticket.createdBy === actor.id) {
+      return;
+    }
+
+    throw new NotFoundException('Ticket not found');
   }
 }

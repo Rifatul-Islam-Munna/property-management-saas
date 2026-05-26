@@ -8,6 +8,8 @@ import type { ApiSuccessResponse } from "@/lib/types/api"
 import type { AuthResponse } from "@/lib/types/auth"
 import type {
   AnnouncementItem,
+  BillItem,
+  FinanceEntryItem,
   InspectionItem,
   MessageItem,
   PropertyItem,
@@ -78,6 +80,12 @@ type UnitPayload = {
   notes?: string
   images?: string[]
   amenities?: string[]
+  extraChargeTemplates?: Array<{
+    title: string
+    amount: number
+    frequency?: string
+    note?: string
+  }>
   isActive?: boolean
 }
 
@@ -91,10 +99,24 @@ type OwnerTenantPayload = {
   phone: string
   address?: string
   monthlyRent?: number
+  rentDueDay?: number
   securityDeposit?: number
   oneTimeGuestFee?: number
   notes?: string
   isActive?: boolean
+}
+
+type OwnerTenantUpdatePayload = {
+  id: string
+  payload: Partial<OwnerTenantPayload> & {
+    address?: string
+    notes?: string
+    leaseStart?: string
+    leaseEnd?: string
+    movedInAt?: string
+    movedOutAt?: string
+    guestFeePaid?: boolean
+  }
 }
 
 type OwnerTechnicianPayload = {
@@ -161,6 +183,9 @@ type OwnerWorkOrderPayload = {
   assignedTo?: string
   scheduledDate?: string
   dueDate?: string
+  estimatedCost?: number
+  actualCost?: number
+  currency?: string
   priority?: string
   status?: string
   completionProof?: string[]
@@ -172,6 +197,9 @@ type OwnerInspectionPayload = {
   type: string
   scheduledAt: string
   assignedTo?: string
+  estimatedCost?: number
+  actualCost?: number
+  currency?: string
   checklist?: string[]
   photos?: string[]
   damageReport?: string
@@ -209,6 +237,53 @@ type OwnerTenantPaymentPayload = {
   dueDate?: string
   paymentMethod?: string
   note?: string
+}
+
+type OwnerBillPayload = {
+  tenantId: string
+  propertyId: string
+  unitId?: string
+  kind?: "rent" | "extra" | "utility" | "guest_fee" | "custom"
+  title: string
+  description?: string
+  amount: number
+  currency?: string
+  monthKey?: string
+  dueDate?: string
+  status?: "unpaid" | "paid" | "partial" | "waived" | "overdue"
+  attachments?: string[]
+  note?: string
+}
+
+type OwnerBillUpdatePayload = {
+  id: string
+  payload: {
+    status?: "unpaid" | "paid" | "partial" | "waived" | "overdue"
+    note?: string
+  }
+}
+
+type OwnerFinanceEntryPayload = {
+  kind: "earning" | "expense"
+  title: string
+  description?: string
+  category: string
+  amount: number
+  currency?: string
+  propertyId?: string
+  unitId?: string
+  tenantId?: string
+  billId?: string
+  source?: string
+  status?: "pending" | "cleared" | "canceled"
+  occurredAt: string
+  attachments?: string[]
+  note?: string
+}
+
+type OwnerFinanceEntryUpdatePayload = {
+  id: string
+  payload: Partial<OwnerFinanceEntryPayload>
 }
 
 type WorkerInspectionReportPayload = {
@@ -357,6 +432,28 @@ export function useOwnerCreateTenantMutation() {
     successMessage: "Tenant created",
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["owner", "tenants"] })
+    },
+  })
+}
+
+export function useOwnerUpdateTenantMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationKey: ["owner", "update", "tenant"],
+    mutationFn: async ({ id, payload }: OwnerTenantUpdatePayload) => {
+      const [data, error] = await patchRequest<ApiSuccessResponse<TenantItem>, typeof payload>(
+        `/tenant/${id}`,
+        payload
+      )
+      if (error || !data) throw new Error(error?.message ?? "Tenant update failed")
+      return data
+    },
+    onSuccess: async () => {
+      toast.success("Tenant updated")
+      await queryClient.invalidateQueries({ queryKey: ["owner", "tenants"] })
+    },
+    onError: (error: Error) => {
+      toast.error(error.message)
     },
   })
 }
@@ -518,6 +615,88 @@ export function useOwnerRecordTenantPaymentMutation() {
   })
 }
 
+export function useOwnerCreateBillMutation() {
+  const queryClient = useQueryClient()
+  return useCommonMutationApi<ApiSuccessResponse<BillItem>, OwnerBillPayload>({
+    url: "/bill",
+    method: "POST",
+    mutationKey: ["owner", "create", "bill"],
+    successMessage: "Bill sent",
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["owner", "bills"] }),
+        queryClient.invalidateQueries({ queryKey: ["resident", "bills"] }),
+      ])
+    },
+  })
+}
+
+export function useOwnerUpdateBillMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationKey: ["owner", "update", "bill"],
+    mutationFn: async ({ id, payload }: OwnerBillUpdatePayload) => {
+      const [data, error] = await patchRequest<ApiSuccessResponse<BillItem>, typeof payload>(
+        `/bill/${id}`,
+        payload
+      )
+      if (error || !data) throw new Error(error?.message ?? "Bill update failed")
+      return data
+    },
+    onSuccess: async () => {
+      toast.success("Bill updated")
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["owner", "bills"] }),
+        queryClient.invalidateQueries({ queryKey: ["resident", "bills"] }),
+      ])
+    },
+    onError: (error: Error) => {
+      toast.error(error.message)
+    },
+  })
+}
+
+export function useOwnerCreateFinanceEntryMutation() {
+  const queryClient = useQueryClient()
+  return useCommonMutationApi<ApiSuccessResponse<FinanceEntryItem>, OwnerFinanceEntryPayload>({
+    url: "/finance-entry",
+    method: "POST",
+    mutationKey: ["owner", "create", "finance-entry"],
+    successMessage: "Finance entry added",
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["owner", "finance-entries"] }),
+        queryClient.invalidateQueries({ queryKey: ["owner", "analytics", "dashboard"] }),
+      ])
+    },
+  })
+}
+
+export function useOwnerUpdateFinanceEntryMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationKey: ["owner", "update", "finance-entry"],
+    mutationFn: async ({ id, payload }: OwnerFinanceEntryUpdatePayload) => {
+      const [data, error] = await patchRequest<ApiSuccessResponse<FinanceEntryItem>, typeof payload>(
+        `/finance-entry/${id}`,
+        payload
+      )
+      if (error || !data) throw new Error(error?.message ?? "Finance entry update failed")
+      return data
+    },
+    onSuccess: async () => {
+      toast.success("Finance entry updated")
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["owner", "finance-entries"] }),
+        queryClient.invalidateQueries({ queryKey: ["owner", "analytics", "dashboard"] }),
+      ])
+    },
+    onError: (error: Error) => {
+      toast.error(error.message)
+    },
+  })
+}
+
 export function useOwnerTogglePropertyMutation() {
   return usePatchEntityMutation<ApiSuccessResponse<PropertyItem>>(
     ["owner", "toggle", "property"],
@@ -571,6 +750,14 @@ export function useOwnerDeleteTechnicianMutation() {
     ["owner", "delete", "technician"],
     [["owner", "technicians"]],
     (id) => `/technician/${id}`
+  )
+}
+
+export function useOwnerDeleteFinanceEntryMutation() {
+  return useDeleteEntityMutation(
+    ["owner", "delete", "finance-entry"],
+    [["owner", "finance-entries"], ["owner", "analytics", "dashboard"]],
+    (id) => `/finance-entry/${id}`
   )
 }
 

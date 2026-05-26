@@ -40,14 +40,16 @@ export class WorkOrderController {
   @Get()
   @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.TETENTWONER, UserRole.WORKER)
   async findAll(@Req() req: ExpressRequest, @Query() query: QueryWorkOrderDto) {
-    const data = await this.workOrderService.findAll(req.user.organizationId ?? '', query);
+    const scopedQuery =
+      req.user.role === UserRole.WORKER ? { ...query, assignedTo: req.user.id } : query;
+    const data = await this.workOrderService.findAll(req.user.organizationId ?? '', scopedQuery);
     return new SuccessResponseDto(200, 'Work order list fetched', data);
   }
 
   @Get(':id')
   @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.TETENTWONER, UserRole.WORKER)
   async findById(@Req() req: ExpressRequest, @Param('id', MongoIdPipe) id: string) {
-    const data = await this.workOrderService.findById(req.user.organizationId ?? '', id);
+    const data = await this.workOrderService.findById(req.user.organizationId ?? '', req.user, id);
     return new SuccessResponseDto(200, 'Work order fetched', data);
   }
 
@@ -58,7 +60,7 @@ export class WorkOrderController {
     @Param('id', MongoIdPipe) id: string,
     @Body() dto: UpdateWorkOrderDto,
   ) {
-    const data = await this.workOrderService.update(req.user.organizationId ?? '', id, dto);
+    const data = await this.workOrderService.update(req.user.organizationId ?? '', req.user, id, dto);
     return new SuccessResponseDto(200, 'Work order updated successfully', data);
   }
 

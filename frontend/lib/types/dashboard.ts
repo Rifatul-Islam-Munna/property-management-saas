@@ -27,6 +27,29 @@ export type DashboardMetrics = {
   totalUnits: number
   occupiedUnits: number
   occupancyRate: number
+  finance?: {
+    totalEarnings: number
+    totalExpenses: number
+    netIncome: number
+    dueAmount: number
+    unpaidBills: number
+    overdueBills: number
+    currentMonthEarnings: number
+    currentMonthExpenses: number
+    currentMonthNet: number
+    previousMonthEarnings: number
+    previousMonthExpenses: number
+    earningsGrowthPct: number
+    expenseGrowthPct: number
+    topExpenseCategories: Array<{ label: string; total: number }>
+    topEarningCategories: Array<{ label: string; total: number }>
+    monthlySeries: Array<{ month: string; earnings: number; expenses: number; due: number }>
+    issueSummary: Array<{ label: string; count: number; amount: number }>
+    opsCosts: {
+      workOrders: { count: number; estimated: number; actual: number }
+      inspections: { count: number; estimated: number; actual: number }
+    }
+  }
 }
 
 export type TicketStatBucket = {
@@ -47,6 +70,27 @@ export type TechnicianStats = {
   totalTenants: number
 }
 
+export type FinanceEntryItem = {
+  _id: string
+  organizationId: string
+  kind: "earning" | "expense"
+  title: string
+  description?: string | null
+  category: string
+  amount: number
+  currency?: string | null
+  propertyId?: string | null
+  unitId?: string | null
+  tenantId?: string | null
+  billId?: string | null
+  source?: string | null
+  status: "pending" | "cleared" | "canceled"
+  occurredAt: string
+  attachments?: string[]
+  note?: string | null
+  createdAt?: string
+}
+
 export type OrganizationItem = {
   _id: string
   name: string
@@ -59,28 +103,65 @@ export type PropertyItem = {
   name: string
   type: string
   totalUnits?: number
+  totalFloors?: number
+  description?: string | null
+  address?: {
+    street?: string | null
+    city?: string | null
+    state?: string | null
+    country?: string | null
+    zipCode?: string | null
+  }
+  amenities?: string[]
+  images?: string[]
+  documents?: string[]
+  contactPhone?: string | null
+  contactEmail?: string | null
   isActive?: boolean
 }
 
 export type UnitItem = {
   _id: string
+  propertyId?: string
   unitNumber: string
+  floor?: number
+  type?: string | null
   status: string
+  tenantId?: string | null
+  monthlyRent?: number | null
   rentAmount?: number
+  area?: number | null
+  notes?: string | null
+  images?: string[]
+  amenities?: string[]
+  extraChargeTemplates?: Array<{
+    title: string
+    amount: number
+    frequency?: string | null
+    note?: string | null
+  }>
+  isActive?: boolean
 }
 
 export type TenantItem = {
   _id: string
   propertyId?: string
+  userId?: string | null
   unitId?: string | null
   fullName: string
   email?: string
   phone?: string
   phoneNumber?: string
   tenantKind?: string
+  address?: string | null
+  leaseStart?: string | null
+  leaseEnd?: string | null
   monthlyRent?: number | null
+  rentDueDay?: number | null
+  securityDeposit?: number | null
   oneTimeGuestFee?: number | null
   guestFeePaid?: boolean
+  documents?: string[]
   paymentRecords?: Array<{
     monthKey: string
     status: string
@@ -88,9 +169,43 @@ export type TenantItem = {
     paidAt?: string | null
     dueDate?: string | null
     paymentMethod?: string | null
+    billId?: string | null
     note?: string | null
   }>
+  notes?: string | null
   isActive?: boolean
+  movedInAt?: string | null
+  movedOutAt?: string | null
+  createdAt?: string
+}
+
+export type BillItem = {
+  _id: string
+  tenantId: string
+  recipientUserId?: string | null
+  propertyId: string
+  unitId?: string | null
+  kind: string
+  title: string
+  description?: string | null
+  amount: number
+  currency?: string | null
+  monthKey?: string | null
+  dueDate?: string | null
+  status: string
+  attachments?: string[]
+  note?: string | null
+  paidAt?: string | null
+  paymentMode?: string | null
+  stripeCheckoutStatus?: string | null
+  stripeInvoicePdf?: string | null
+  stripeHostedInvoiceUrl?: string | null
+  stripePaymentMethodType?: string | null
+  paymentVerifiedAt?: string | null
+  stripeCheckoutSessionId?: string | null
+  stripePaymentIntentId?: string | null
+  stripeInvoiceId?: string | null
+  createdAt?: string
 }
 
 export type TicketItem = {
@@ -105,6 +220,28 @@ export type TicketItem = {
   status: string
   assignedTo?: string | null
   images?: string[]
+  comments?: Array<{
+    userId: string
+    userName: string
+    content: string
+    createdAt?: string
+  }>
+  internalNotes?: Array<{
+    userId: string
+    userName: string
+    content: string
+    createdAt?: string
+  }>
+  timeline?: Array<{
+    action: string
+    performedBy: string
+    performedAt?: string
+    details: string
+  }>
+  dueDate?: string | null
+  estimatedCost?: number | null
+  actualCost?: number | null
+  resolvedAt?: string | null
   createdAt?: string
 }
 
@@ -148,6 +285,9 @@ export type AnnouncementItem = {
   title: string
   content: string
   propertyId?: string | null
+  type?: string
+  priority?: string
+  attachments?: string[]
   audience?: string
   isActive?: boolean
   createdAt?: string
@@ -163,7 +303,14 @@ export type WorkOrderItem = {
   assignedTo?: string | null
   priority?: string
   status: string
+  scheduledDate?: string | null
+  dueDate?: string | null
+  estimatedCost?: number | null
+  actualCost?: number | null
+  currency?: string | null
+  completionNotes?: string | null
   completionProof?: string[]
+  verifiedAt?: string | null
 }
 
 export type InspectionItem = {
@@ -172,6 +319,9 @@ export type InspectionItem = {
   unitId?: string | null
   type: string
   scheduledAt?: string
+  estimatedCost?: number | null
+  actualCost?: number | null
+  currency?: string | null
   checklist?: string[]
   photos?: string[]
   assignedTo?: string | null
@@ -206,11 +356,58 @@ export type RecurringMaintenanceItem = {
 
 export type MessageItem = {
   _id: string
+  roomType?: string
+  roomId?: string
+  senderId?: string
+  recipientIds?: string[]
+  senderName?: string
+  kind?: string
   receiverId?: string
   title?: string
   content?: string
   attachments?: string[]
+  readBy?: string[]
   createdAt?: string
+}
+
+export type ResidentWorkspace = {
+  tenant: TenantItem | null
+  property: PropertyItem | null
+  unit: UnitItem | null
+  linkedOwner?: {
+    _id?: string
+    fullName?: string
+    email?: string
+    phoneNumber?: string
+  } | null
+  pendingAssignment?: {
+    _id: string
+    direction?: string
+    status?: string
+    requesterUserId?: string
+    requestedRole?: string
+    propertyIds?: string[]
+    ownerUser?: {
+      id?: string
+      fullName?: string
+      email?: string
+      phoneNumber?: string
+    } | null
+    properties?: Array<{
+      _id: string
+      name?: string
+      type?: string | null
+      address?: {
+        street?: string | null
+        city?: string | null
+        state?: string | null
+        country?: string | null
+        zipCode?: string | null
+      } | null
+    }>
+    message?: string | null
+    createdAt?: string
+  } | null
 }
 
 export type VendorItem = {

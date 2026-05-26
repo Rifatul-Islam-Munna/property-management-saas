@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsArray, IsDateString, IsEnum, IsOptional, IsString } from 'class-validator';
+import { IsArray, IsDateString, IsEnum, IsNumber, IsOptional, IsString, Min } from 'class-validator';
 import { TicketPriority } from 'src/ticket/entities/ticket.entity';
 import { WorkOrderStatus } from '../entities/work-order.entity';
 
@@ -42,6 +42,23 @@ export class CreateWorkOrderDto {
   @IsDateString()
   dueDate?: string;
 
+  @ApiPropertyOptional({ example: 150 })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  estimatedCost?: number;
+
+  @ApiPropertyOptional({ example: 120 })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  actualCost?: number;
+
+  @ApiPropertyOptional({ example: 'usd' })
+  @IsOptional()
+  @IsString()
+  currency?: string;
+
   @ApiPropertyOptional({ enum: TicketPriority })
   @IsOptional()
   @IsEnum(TicketPriority)
@@ -51,6 +68,11 @@ export class CreateWorkOrderDto {
   @IsOptional()
   @IsEnum(WorkOrderStatus)
   status?: WorkOrderStatus;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  completionNotes?: string;
 
   @ApiPropertyOptional({ type: [String] })
   @IsOptional()

@@ -57,6 +57,30 @@ export class TenantPaymentRecord {
   @Prop({ type: String, default: null })
   paymentMethod?: string | null;
 
+  @ApiPropertyOptional({ example: 'bill_abc123' })
+  @Prop({ type: String, default: null })
+  billId?: string | null;
+
+  @ApiPropertyOptional({ example: 'cs_test_123' })
+  @Prop({ type: String, default: null })
+  stripeCheckoutSessionId?: string | null;
+
+  @ApiPropertyOptional({ example: 'pi_123' })
+  @Prop({ type: String, default: null })
+  stripePaymentIntentId?: string | null;
+
+  @ApiPropertyOptional({ example: 'in_123' })
+  @Prop({ type: String, default: null })
+  stripeInvoiceId?: string | null;
+
+  @ApiPropertyOptional({ example: 'https://invoice.stripe.com/...' })
+  @Prop({ type: String, default: null })
+  stripeHostedInvoiceUrl?: string | null;
+
+  @ApiPropertyOptional({ example: 'https://files.stripe.com/...' })
+  @Prop({ type: String, default: null })
+  stripeInvoicePdf?: string | null;
+
   @ApiPropertyOptional({ example: 'partial carry' })
   @Prop({ type: String, default: null })
   note?: string | null;
@@ -119,6 +143,10 @@ export class Tenant {
   @Prop({ type: Number, default: null })
   monthlyRent?: number | null;
 
+  @ApiPropertyOptional({ example: 5 })
+  @Prop({ type: Number, default: null, min: 1, max: 31 })
+  rentDueDay?: number | null;
+
   @ApiPropertyOptional({ example: 30000 })
   @Prop({ type: Number, default: null })
   securityDeposit?: number | null;
@@ -149,6 +177,12 @@ export class Tenant {
         paidAt: { type: Date, default: null },
         dueDate: { type: Date, default: null },
         paymentMethod: { type: String, default: null },
+        billId: { type: String, default: null },
+        stripeCheckoutSessionId: { type: String, default: null },
+        stripePaymentIntentId: { type: String, default: null },
+        stripeInvoiceId: { type: String, default: null },
+        stripeHostedInvoiceUrl: { type: String, default: null },
+        stripeInvoicePdf: { type: String, default: null },
         note: { type: String, default: null },
       },
     ],

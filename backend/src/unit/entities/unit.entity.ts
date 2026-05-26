@@ -11,6 +11,25 @@ export enum UnitStatus {
 
 export type UnitDocument = HydratedDocument<Unit>;
 
+@Schema({ _id: false })
+export class UnitExtraChargeTemplate {
+  @ApiProperty({ example: 'Gas bill' })
+  @Prop({ type: String, required: true, trim: true })
+  title: string;
+
+  @ApiProperty({ example: 500 })
+  @Prop({ type: Number, required: true, min: 0 })
+  amount: number;
+
+  @ApiPropertyOptional({ example: 'monthly' })
+  @Prop({ type: String, default: 'monthly' })
+  frequency?: string | null;
+
+  @ApiPropertyOptional({ example: 'Meter-based' })
+  @Prop({ type: String, default: null })
+  note?: string | null;
+}
+
 @Schema({ timestamps: true, toJSON: { virtuals: true }, toObject: { virtuals: true } })
 export class Unit {
   @ApiProperty()
@@ -63,6 +82,20 @@ export class Unit {
   @ApiPropertyOptional({ example: ['wifi', 'parking', 'gym'] })
   @Prop({ type: [String], default: [] })
   amenities: string[];
+
+  @ApiPropertyOptional({ type: [UnitExtraChargeTemplate] })
+  @Prop({
+    type: [
+      {
+        title: { type: String, required: true, trim: true },
+        amount: { type: Number, required: true, min: 0 },
+        frequency: { type: String, default: 'monthly' },
+        note: { type: String, default: null },
+      },
+    ],
+    default: [],
+  })
+  extraChargeTemplates: UnitExtraChargeTemplate[];
 
   @ApiProperty({ example: true, default: true })
   @Prop({ type: Boolean, default: true })

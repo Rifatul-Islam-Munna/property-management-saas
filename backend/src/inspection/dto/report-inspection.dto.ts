@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsArray, IsBoolean, IsOptional, IsString } from 'class-validator';
+import { IsArray, IsBoolean, IsNumber, IsOptional, IsString, Min } from 'class-validator';
 
 export class ReportInspectionDto {
   @ApiPropertyOptional()
@@ -22,6 +22,17 @@ export class ReportInspectionDto {
   @IsOptional()
   @IsString()
   notes?: string;
+
+  @ApiPropertyOptional({ example: 65 })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  actualCost?: number;
+
+  @ApiPropertyOptional({ example: 'usd' })
+  @IsOptional()
+  @IsString()
+  currency?: string;
 
   @ApiPropertyOptional()
   @IsOptional()

@@ -3,6 +3,7 @@
 import { useQueryWrapper } from "@/api-hooks/react-query-wrapper"
 import type { ApiSuccessResponse, PaginatedResult } from "@/lib/types/api"
 import type {
+  BillItem,
   DashboardMetrics,
   OccupancyStats,
   OrganizationItem,
@@ -136,6 +137,22 @@ export function usePlansQuery() {
   return useQueryWrapper<ApiSuccessResponse<PaginatedResult<PlanItem>>, PlanItem[]>(
     ["admin", "plans"],
     "/subscription/plans",
+    {
+      select: (response) => response?.data?.data ?? [],
+    }
+  )
+}
+
+export function useAdminBillsQuery(params?: { tenantId?: string; propertyId?: string; status?: string }) {
+  const searchParams = new URLSearchParams()
+  if (params?.tenantId) searchParams.set("tenantId", params.tenantId)
+  if (params?.propertyId) searchParams.set("propertyId", params.propertyId)
+  if (params?.status) searchParams.set("status", params.status)
+  const queryString = searchParams.toString()
+
+  return useQueryWrapper<ApiSuccessResponse<PaginatedResult<BillItem>>, BillItem[]>(
+    ["admin", "bills", params ?? {}],
+    `/bill${queryString ? `?${queryString}` : ""}`,
     {
       select: (response) => response?.data?.data ?? [],
     }

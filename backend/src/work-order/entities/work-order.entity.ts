@@ -41,6 +41,15 @@ export class WorkOrder {
   @Prop({ type: Date, default: null })
   dueDate?: Date | null;
 
+  @Prop({ type: Number, default: 0, min: 0 })
+  estimatedCost?: number | null;
+
+  @Prop({ type: Number, default: 0, min: 0 })
+  actualCost?: number | null;
+
+  @Prop({ type: String, default: 'usd' })
+  currency?: string | null;
+
   @Prop({ type: String, enum: TicketPriority, default: TicketPriority.MEDIUM })
   priority: TicketPriority;
 

@@ -57,7 +57,11 @@ export class MessagingController {
     UserRole.GUEST,
   )
   async findAll(@Req() req: ExpressRequest, @Query() query: QueryMessageDto): Promise<SuccessResponseDto<any>> {
-    const data = await this.messagingService.findMessages(req.user.organizationId ?? '', query);
+    const data = await this.messagingService.findMessages(
+      req.user.organizationId ?? '',
+      req.user,
+      query,
+    );
     return new SuccessResponseDto(200, 'Messages fetched', data);
   }
 

@@ -1,4 +1,5 @@
 import { AuthSupportModule } from './lib/auth-support.module';
+import { FinanceEntryModule } from './finance-entry/finance-entry.module';
 import { InspectionModule } from './inspection/inspection.module';
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
@@ -9,6 +10,7 @@ import { AnalyticsModule } from './analytics/analytics.module';
 import { AnnouncementModule } from './announcement/announcement.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { BillModule } from './bill/bill.module';
 import { ImageModule } from './image/image.module';
 import { MessagingModule } from './messaging/messaging.module';
 import { OrganizationModule } from './organization/organization.module';
@@ -47,6 +49,8 @@ import { WorkOrderModule } from './work-order/work-order.module';
     }),
     AnalyticsModule,
     AnnouncementModule,
+    BillModule,
+    FinanceEntryModule,
     ImageModule,
     InspectionModule,
     MessagingModule,

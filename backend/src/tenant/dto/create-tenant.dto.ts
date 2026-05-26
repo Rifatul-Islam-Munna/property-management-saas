@@ -93,6 +93,11 @@ export class CreateTenantDto {
   @IsNumber()
   monthlyRent?: number;
 
+  @ApiPropertyOptional({ example: 5 })
+  @IsOptional()
+  @IsNumber()
+  rentDueDay?: number;
+
   @ApiPropertyOptional({ example: 30000 })
   @IsOptional()
   @IsNumber()

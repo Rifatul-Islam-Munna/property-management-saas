@@ -1,37 +1,47 @@
-import { AppSidebar } from "@/components/app-sidebar"
-import { ChartAreaInteractive } from "@/components/chart-area-interactive"
-import { DataTable } from "@/components/data-table"
-import { SectionCards } from "@/components/section-cards"
-import { SiteHeader } from "@/components/site-header"
-import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar"
+"use client"
 
-import data from "./data.json"
+import { AdminDashboardBlock } from "@/components/dashboard/admin-dashboard-block"
+import { DashboardPanelSkeleton } from "@/components/dashboard/dashboard-loading"
+import { ResidentDashboardBlock } from "@/components/dashboard/resident-dashboard-block"
+import { TenantOwnerDashboardBlock } from "@/components/dashboard/tenant-owner-dashboard-block"
+import { WorkerDashboard } from "@/components/dashboard/worker-dashboard"
+import { DashboardGate } from "@/components/dashboard/dashboard-gate"
+import { useMeQuery } from "@/hooks/use-auth"
 
-export default function Page() {
+export default function DashboardPage() {
+  const { data: me, isLoading } = useMeQuery()
+
+  if (isLoading || !me) {
+    return <DashboardPanelSkeleton />
+  }
+
+  if (me.role === "tetentwoner") {
+    return (
+      <DashboardGate roleKey="tenant-owner" bare>
+        <TenantOwnerDashboardBlock />
+      </DashboardGate>
+    )
+  }
+
+  if (me.role === "admin" || me.role === "super_admin") {
+    return (
+      <DashboardGate roleKey="admin" bare>
+        <AdminDashboardBlock />
+      </DashboardGate>
+    )
+  }
+
+  if (me.role === "worker") {
+    return (
+      <DashboardGate roleKey="worker">
+        <WorkerDashboard />
+      </DashboardGate>
+    )
+  }
+
   return (
-    <SidebarProvider
-      style={
-        {
-          "--sidebar-width": "calc(var(--spacing) * 72)",
-          "--header-height": "calc(var(--spacing) * 12)",
-        } as React.CSSProperties
-      }
-    >
-      <AppSidebar variant="inset" />
-      <SidebarInset>
-        <SiteHeader />
-        <div className="flex flex-1 flex-col">
-          <div className="@container/main flex flex-1 flex-col gap-2">
-            <div className="flex flex-col gap-4 py-4 md:gap-6 md:py-6">
-              <SectionCards />
-              <div className="px-4 lg:px-6">
-                <ChartAreaInteractive />
-              </div>
-              <DataTable data={data} />
-            </div>
-          </div>
-        </div>
-      </SidebarInset>
-    </SidebarProvider>
+    <DashboardGate roleKey="resident" bare>
+      <ResidentDashboardBlock />
+    </DashboardGate>
   )
 }

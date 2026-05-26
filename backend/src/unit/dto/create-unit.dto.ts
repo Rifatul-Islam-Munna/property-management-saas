@@ -9,8 +9,32 @@ import {
   IsOptional,
   IsString,
   Min,
+  ValidateNested,
 } from 'class-validator';
+import { Type } from 'class-transformer';
 import { UnitStatus } from '../entities/unit.entity';
+
+export class UnitExtraChargeTemplateDto {
+  @ApiProperty({ example: 'Gas bill' })
+  @IsString()
+  @IsNotEmpty()
+  title: string;
+
+  @ApiProperty({ example: 500 })
+  @IsNumber()
+  @Min(0)
+  amount: number;
+
+  @ApiPropertyOptional({ example: 'monthly' })
+  @IsOptional()
+  @IsString()
+  frequency?: string;
+
+  @ApiPropertyOptional({ example: 'Meter-based' })
+  @IsOptional()
+  @IsString()
+  note?: string;
+}
 
 export class CreateUnitDto {
   @ApiProperty({ example: 'prop_xyz789' })
@@ -72,6 +96,13 @@ export class CreateUnitDto {
   @IsArray()
   @IsString({ each: true })
   amenities?: string[];
+
+  @ApiPropertyOptional({ type: [UnitExtraChargeTemplateDto] })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => UnitExtraChargeTemplateDto)
+  extraChargeTemplates?: UnitExtraChargeTemplateDto[];
 
   @ApiPropertyOptional({ example: true, default: true })
   @IsOptional()

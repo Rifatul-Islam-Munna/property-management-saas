@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import type { JwtUser } from 'src/lib/auth.guard';
+import { UserRole } from 'src/user/entities/user.entity';
 import { CreateWorkOrderDto } from './dto/create-work-order.dto';
 import { QueryWorkOrderDto } from './dto/query-work-order.dto';
 import { UpdateWorkOrderDto } from './dto/update-work-order.dto';
@@ -50,16 +51,35 @@ export class WorkOrderService {
     return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
   }
 
-  async findById(organizationId: string, id: string) {
-    const workOrder = await this.workOrderModel.findOne({ _id: id, organizationId }).lean();
+  async findById(organizationId: string, actor: JwtUser, id: string) {
+    const filter: Record<string, unknown> = { _id: id, organizationId };
+    if (actor.role === UserRole.WORKER) {
+      filter.assignedTo = actor.id;
+    }
+
+    const workOrder = await this.workOrderModel.findOne(filter).lean();
     if (!workOrder) throw new NotFoundException('Work order not found');
     return workOrder;
   }
 
-  async update(organizationId: string, id: string, dto: UpdateWorkOrderDto) {
+  async update(organizationId: string, actor: JwtUser, id: string, dto: UpdateWorkOrderDto) {
+    const filter: Record<string, unknown> = { _id: id, organizationId };
+    if (actor.role === UserRole.WORKER) {
+      filter.assignedTo = actor.id;
+    }
+
+    const updatePayload =
+      actor.role === UserRole.WORKER
+        ? {
+            status: dto.status,
+            completionNotes: dto.completionNotes,
+            completionProof: dto.completionProof,
+          }
+        : dto;
+
     const workOrder = await this.workOrderModel.findOneAndUpdate(
-      { _id: id, organizationId },
-      dto,
+      filter,
+      updatePayload,
       { new: true },
     );
     if (!workOrder) throw new NotFoundException('Work order not found');

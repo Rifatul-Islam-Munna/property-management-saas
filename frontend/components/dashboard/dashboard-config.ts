@@ -38,11 +38,12 @@ export const dashboardConfigs: DashboardRoleConfig[] = [
   {
     key: "worker",
     title: "Worker dashboard",
-    subtitle: "Assignments, ticket work, property links.",
+    subtitle: "Fast mobile field workspace for assigned jobs.",
     allowedRoles: ["worker"],
     nav: [
       { label: "Overview", href: "#overview" },
-      { label: "Work", href: "#work" },
+      { label: "Queue", href: "#queue" },
+      { label: "Updates", href: "#updates" },
       { label: "Messages", href: "#messages" },
     ],
   },

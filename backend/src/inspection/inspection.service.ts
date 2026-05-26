@@ -89,6 +89,12 @@ export class InspectionService {
     inspection.workerReportFiles = dto.workerReportFiles ?? inspection.workerReportFiles ?? [];
     inspection.damageReport = dto.damageReport ?? inspection.damageReport ?? null;
     inspection.notes = dto.notes ?? inspection.notes ?? null;
+    if (dto.actualCost !== undefined) {
+      inspection.actualCost = dto.actualCost;
+    }
+    if (dto.currency !== undefined) {
+      inspection.currency = dto.currency;
+    }
     inspection.workerReportedAt = new Date();
     inspection.workerReportedBy = actor.id;
 

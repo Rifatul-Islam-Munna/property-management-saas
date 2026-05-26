@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
 import { MongooseModule } from '@nestjs/mongoose';
 import { Organization, OrganizationSchema } from 'src/organization/entities/organization.entity';
+import { Property, PropertySchema } from 'src/property/entities/property.entity';
 import {
   AssignmentRequest,
   AssignmentRequestSchema,
@@ -18,6 +19,7 @@ import { UserService } from './user.service';
       { name: User.name, schema: UserSchema },
       { name: Organization.name, schema: OrganizationSchema },
       { name: AssignmentRequest.name, schema: AssignmentRequestSchema },
+      { name: Property.name, schema: PropertySchema },
     ]),
     JwtModule.registerAsync({
       inject: [ConfigService],

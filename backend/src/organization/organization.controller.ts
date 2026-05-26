@@ -15,9 +15,11 @@ import { AuthGuard } from 'src/lib/auth.guard';
 import type { ExpressRequest } from 'src/lib/auth.guard';
 import { Roles } from 'src/lib/roles.decorator';
 import { RolesGuard } from 'src/lib/roles.guard';
+import { SuccessResponseDto } from 'src/lib/success-response.dto';
 import { UserRole } from 'src/user/entities/user.entity';
 import { CreateOrganizationDto } from './dto/create-organization.dto';
 import { QueryOrganizationDto } from './dto/query-organization.dto';
+import { SaveStripeSettingsDto } from './dto/save-stripe-settings.dto';
 import { UpdateOrganizationDto } from './dto/update-organization.dto';
 import { OrganizationService } from './organization.service';
 
@@ -44,8 +46,23 @@ export class OrganizationController {
   }
 
   @Get('my')
-  findMy(@Req() req: ExpressRequest): Promise<any[]> {
-    return this.organizationService.findByOwnerId(req.user.id);
+  async findMy(@Req() req: ExpressRequest): Promise<SuccessResponseDto<any[]>> {
+    const data = await this.organizationService.findByOwnerId(req.user.id);
+    return new SuccessResponseDto(200, 'Owner organizations fetched', data);
+  }
+
+  @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.TETENTWONER)
+  @Get('my/stripe-settings')
+  async getMyStripeSettings(@Req() req: ExpressRequest): Promise<SuccessResponseDto<any>> {
+    const data = await this.organizationService.getStripeSettingsStatus(req.user.organizationId ?? '');
+    return new SuccessResponseDto(200, 'Stripe settings fetched', data);
+  }
+
+  @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.TETENTWONER)
+  @Patch('my/stripe-settings')
+  async saveMyStripeSettings(@Req() req: ExpressRequest, @Body() dto: SaveStripeSettingsDto): Promise<SuccessResponseDto<any>> {
+    const data = await this.organizationService.saveStripeSettings(req.user.organizationId ?? '', dto);
+    return new SuccessResponseDto(200, 'Stripe settings saved', data);
   }
 
   @Get(':id')
