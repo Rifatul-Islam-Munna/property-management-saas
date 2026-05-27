@@ -1146,6 +1146,17 @@ export function TenantOwnerUsersPage() {
         title="Users"
         body="Signed-up renter, guest, or worker accounts appear here. Owner sends request first. After user accepts, the property link becomes active."
       />
+      <Card className="shadow-none">
+        <CardContent className="flex flex-wrap items-center justify-between gap-3 pt-6">
+          <div>
+            <p className="font-medium text-slate-950">Need add another owner?</p>
+            <p className="text-sm text-slate-600">Open Owner Team page for `co_owner` or `manager` account creation.</p>
+          </div>
+          <a href="/dashboard/tenant-owner/team" className="inline-flex items-center rounded-lg border px-3 py-2 text-sm text-slate-700">
+            Open owner team
+          </a>
+        </CardContent>
+      </Card>
       <div className="flex justify-end">
         <CreateSheet
           open={isCreateOpen}
@@ -1346,60 +1357,70 @@ export function TenantOwnerTeamPage() {
         title="Co-owner and manager access"
         body="Primary tenant owner can create delegated co-owner or manager accounts. They see same owner dashboard. Only primary owner can add this team."
       />
-      <div className="flex justify-end">
-        {canManageOwnerTeam ? (
-          <CreateSheet
-            open={isCreateOpen}
-            onOpenChange={setIsCreateOpen}
-            title="Add owner team member"
-            description="Create delegated owner access under same organization."
-            triggerLabel="Add co-owner / manager"
-          >
-            <form
-              className="space-y-4"
-              onSubmit={(event) => {
-                event.preventDefault()
-                createUser.mutate(
-                  {
-                    fullName: form.fullName,
-                    email: form.email,
-                    phoneNumber: form.phoneNumber,
-                    password: form.password,
-                    jobTitle: form.jobTitle || undefined,
-                    role: "tetentwoner",
-                    ownerProfileType: form.ownerProfileType,
-                  },
-                  {
-                    onSuccess: () => {
-                      setForm({
-                        fullName: "",
-                        email: "",
-                        phoneNumber: "",
-                        password: "",
-                        jobTitle: "",
-                        ownerProfileType: "manager",
-                      })
-                      setIsCreateOpen(false)
-                    },
-                  }
-                )
-              }}
+      <Card className="shadow-none">
+        <CardContent className="flex flex-wrap items-center justify-between gap-4 pt-6">
+          <div className="space-y-2">
+            <p className="font-medium text-slate-950">Add new owner from this page</p>
+            <p className="text-sm text-slate-600">Path: `/dashboard/tenant-owner/team`. Create `co_owner` or `manager` under same organization.</p>
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant="outline">{me?.ownerProfileType ?? "primary_owner"}</Badge>
+              {canManageOwnerTeam ? <Badge>can add owner team</Badge> : <Badge variant="secondary">view only</Badge>}
+            </div>
+          </div>
+          {canManageOwnerTeam ? (
+            <CreateSheet
+              open={isCreateOpen}
+              onOpenChange={setIsCreateOpen}
+              title="Add owner team member"
+              description="Create delegated owner access under same organization."
+              triggerLabel="Add co-owner / manager"
             >
-              <FieldGroup>
-                <Field><FieldLabel>Access type</FieldLabel><Select value={form.ownerProfileType} onValueChange={(value) => setForm((current) => ({ ...current, ownerProfileType: (value ?? "manager") as "co_owner" | "manager" }))}><SelectTrigger className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectGroup><SelectItem value="co_owner">co_owner</SelectItem><SelectItem value="manager">manager</SelectItem></SelectGroup></SelectContent></Select></Field>
-                <Field><FieldLabel>Full name</FieldLabel><Input value={form.fullName} onChange={(event) => setForm((current) => ({ ...current, fullName: event.target.value ?? "" }))} /></Field>
-                <Field><FieldLabel>Email</FieldLabel><Input type="email" value={form.email} onChange={(event) => setForm((current) => ({ ...current, email: event.target.value ?? "" }))} /></Field>
-                <Field><FieldLabel>Phone</FieldLabel><Input value={form.phoneNumber} onChange={(event) => setForm((current) => ({ ...current, phoneNumber: event.target.value ?? "" }))} /></Field>
-                <Field><FieldLabel>Job title</FieldLabel><Input value={form.jobTitle} onChange={(event) => setForm((current) => ({ ...current, jobTitle: event.target.value ?? "" }))} /></Field>
-                <Field><FieldLabel>Password</FieldLabel><Input type="password" value={form.password} onChange={(event) => setForm((current) => ({ ...current, password: event.target.value ?? "" }))} /></Field>
-              </FieldGroup>
-              <Button type="submit" disabled={createUser.isPending || !form.fullName || !form.email || !form.phoneNumber || !form.password}>
-                Create team member
-              </Button>
-            </form>
-          </CreateSheet>
-        ) : null}
-      </div>
+              <form
+                className="space-y-4"
+                onSubmit={(event) => {
+                  event.preventDefault()
+                  createUser.mutate(
+                    {
+                      fullName: form.fullName,
+                      email: form.email,
+                      phoneNumber: form.phoneNumber,
+                      password: form.password,
+                      jobTitle: form.jobTitle || undefined,
+                      role: "tetentwoner",
+                      ownerProfileType: form.ownerProfileType,
+                    },
+                    {
+                      onSuccess: () => {
+                        setForm({
+                          fullName: "",
+                          email: "",
+                          phoneNumber: "",
+                          password: "",
+                          jobTitle: "",
+                          ownerProfileType: "manager",
+                        })
+                        setIsCreateOpen(false)
+                      },
+                    }
+                  )
+                }}
+              >
+                <FieldGroup>
+                  <Field><FieldLabel>Access type</FieldLabel><Select value={form.ownerProfileType} onValueChange={(value) => setForm((current) => ({ ...current, ownerProfileType: (value ?? "manager") as "co_owner" | "manager" }))}><SelectTrigger className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectGroup><SelectItem value="co_owner">co_owner</SelectItem><SelectItem value="manager">manager</SelectItem></SelectGroup></SelectContent></Select></Field>
+                  <Field><FieldLabel>Full name</FieldLabel><Input value={form.fullName} onChange={(event) => setForm((current) => ({ ...current, fullName: event.target.value ?? "" }))} /></Field>
+                  <Field><FieldLabel>Email</FieldLabel><Input type="email" value={form.email} onChange={(event) => setForm((current) => ({ ...current, email: event.target.value ?? "" }))} /></Field>
+                  <Field><FieldLabel>Phone</FieldLabel><Input value={form.phoneNumber} onChange={(event) => setForm((current) => ({ ...current, phoneNumber: event.target.value ?? "" }))} /></Field>
+                  <Field><FieldLabel>Job title</FieldLabel><Input value={form.jobTitle} onChange={(event) => setForm((current) => ({ ...current, jobTitle: event.target.value ?? "" }))} /></Field>
+                  <Field><FieldLabel>Password</FieldLabel><Input type="password" value={form.password} onChange={(event) => setForm((current) => ({ ...current, password: event.target.value ?? "" }))} /></Field>
+                </FieldGroup>
+                <Button type="submit" disabled={createUser.isPending || !form.fullName || !form.email || !form.phoneNumber || !form.password}>
+                  Create team member
+                </Button>
+              </form>
+            </CreateSheet>
+          ) : null}
+        </CardContent>
+      </Card>
 
       {!canManageOwnerTeam ? (
         <Card className="shadow-none">

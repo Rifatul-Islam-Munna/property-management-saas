@@ -828,8 +828,13 @@ export class UserService {
     }
 
     if (actor.role === UserRole.TETENTWONER) {
+      const actorWithOwnerTeamAccess = actor as JwtUser & {
+        canManageOwnerTeam?: boolean;
+      };
       const actorCanManageOwnerTeam =
-        actor.canManageOwnerTeam ?? actor.ownerProfileType !== OwnerProfileType.MANAGER && actor.ownerProfileType !== OwnerProfileType.CO_OWNER;
+        actorWithOwnerTeamAccess.canManageOwnerTeam ??
+        (actor.ownerProfileType !== OwnerProfileType.MANAGER &&
+          actor.ownerProfileType !== OwnerProfileType.CO_OWNER);
 
       if (targetRole === UserRole.TETENTWONER && actorCanManageOwnerTeam) {
         return;
