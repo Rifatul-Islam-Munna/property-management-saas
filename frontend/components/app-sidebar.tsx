@@ -4,6 +4,7 @@ import * as React from "react"
 import { usePathname } from "next/navigation"
 import {
   BellIcon,
+  BotIcon,
   BriefcaseBusinessIcon,
   Building2Icon,
   CommandIcon,
@@ -76,6 +77,7 @@ function buildNav(role: string | undefined, pathname: string) {
             { title: "Tickets", url: "/dashboard/tenant-owner/tickets", icon: <CreditCardIcon /> },
             { title: "Recurring", url: "/dashboard/tenant-owner/recurring", icon: <RepeatIcon /> },
             { title: "Inspections", url: "/dashboard/tenant-owner/inspections", icon: <FileChartColumnIcon /> },
+            { title: "AI", url: "/dashboard/tenant-owner/ai", icon: <BotIcon /> },
           ],
         },
       ].map((section) => ({
@@ -113,6 +115,7 @@ function buildNav(role: string | undefined, pathname: string) {
             { title: "Properties", url: "/dashboard/admin/properties", icon: <HomeIcon /> },
             { title: "Tenants", url: "/dashboard/admin/tenants", icon: <ShieldIcon /> },
             { title: "Technicians", url: "/dashboard/admin/technicians", icon: <WrenchIcon /> },
+            { title: "AI", url: "/dashboard/admin/ai", icon: <BotIcon /> },
           ],
         },
       ].map((section) => ({
@@ -183,6 +186,7 @@ function buildNav(role: string | undefined, pathname: string) {
           { title: "Tickets", url: "/dashboard/resident/tickets", icon: <CreditCardIcon /> },
           { title: "Recurring", url: "/dashboard/resident/recurring", icon: <RepeatIcon /> },
           { title: "Inspections", url: "/dashboard/resident/inspections", icon: <FileChartColumnIcon /> },
+          { title: "AI", url: "/dashboard/resident/ai", icon: <BotIcon /> },
         ],
       },
     ].map((section) => ({

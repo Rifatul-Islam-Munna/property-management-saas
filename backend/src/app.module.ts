@@ -1,4 +1,5 @@
 import { AuthSupportModule } from './lib/auth-support.module';
+import { AiModule } from './ai/ai.module';
 import { FinanceEntryModule } from './finance-entry/finance-entry.module';
 import { InspectionModule } from './inspection/inspection.module';
 import { Module } from '@nestjs/common';
@@ -47,6 +48,7 @@ import { WorkOrderModule } from './work-order/work-order.module';
         uri: configService.get<string>('MONGODB_URL'),
       }),
     }),
+    AiModule,
     AnalyticsModule,
     AnnouncementModule,
     BillModule,
