@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Injectable,
   NotFoundException,
+  RequestTimeoutException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import axios from 'axios';
@@ -50,6 +51,16 @@ type AiExecutionContext = {
   baseUrl?: string;
   authHeader?: string;
 };
+
+type DirectToolPlan = {
+  reply?: string;
+  toolCalls: Array<{
+    name: string;
+    arguments: Record<string, unknown>;
+  }>;
+};
+
+const AI_PROVIDER_TIMEOUT_MS = 25000;
 
 @Injectable()
 export class AiService {
@@ -224,12 +235,14 @@ export class AiService {
 
     let assistantReply = '';
     for (let round = 0; round < 2; round += 1) {
-      const modelPlan = await this.requestModelPlan(
-        actor,
-        config,
-        session.messages,
-        toolEvents,
-      );
+      const modelPlan =
+        this.tryDirectToolPlan(actor, dto.message) ??
+        (await this.requestModelPlan(
+          actor,
+          config,
+          session.messages,
+          toolEvents,
+        ));
 
       const plannedCalls = modelPlan.toolCalls.slice(0, 2);
       if (!plannedCalls.length) {
@@ -268,6 +281,11 @@ export class AiService {
             ),
           },
         );
+      }
+
+      if (this.tryDirectToolPlan(actor, dto.message)) {
+        assistantReply = this.buildDirectReply(dto.message, toolEvents);
+        break;
       }
 
       const finalPlan = await this.requestModelFinalReply(
@@ -325,6 +343,135 @@ export class AiService {
     return this.clearResidentSession(actor, sessionId);
   }
 
+  private tryDirectToolPlan(
+    actor: JwtUser,
+    message: string,
+  ): DirectToolPlan | null {
+    const normalized = message.trim().toLowerCase();
+    const isAdminLike = [UserRole.ADMIN, UserRole.SUPER_ADMIN].includes(actor.role);
+    const isOwnerLike = actor.role === UserRole.TETENTWONER;
+
+    if (!isAdminLike && !isOwnerLike) {
+      return null;
+    }
+
+    const entityRouteMap: Array<{
+      match: RegExp;
+      path: string;
+      label: string;
+    }> = [
+      { match: /\buser(s)?\b/, path: '/user', label: 'users' },
+      { match: /\borganization(s)?\b/, path: '/organization', label: 'organizations' },
+      { match: /\bpropert(y|ies)\b/, path: '/property', label: 'properties' },
+      { match: /\bunit(s)?\b/, path: '/unit', label: 'units' },
+      { match: /\btenant(s)?\b/, path: '/tenant', label: 'tenants' },
+      { match: /\bticket(s)?\b/, path: '/ticket', label: 'tickets' },
+      { match: /\btechnician(s)?\b|\bworker(s)?\b/, path: '/technician', label: 'technicians' },
+      { match: /\bbill(s)?\b/, path: '/bill', label: 'bills' },
+      { match: /\bvendor(s)?\b/, path: '/vendor', label: 'vendors' },
+    ];
+
+    const target = entityRouteMap.find((item) => item.match.test(normalized));
+    if (!target) {
+      return null;
+    }
+
+    if (this.isCountIntent(normalized)) {
+      return {
+        toolCalls: [
+          {
+            name: 'platform_api_request',
+            arguments: {
+              method: 'GET',
+              path: target.path,
+            },
+          },
+        ],
+      };
+    }
+
+    if (/\blist\b|\bshow\b|\bget\b/.test(normalized)) {
+      return {
+        toolCalls: [
+          {
+            name: 'platform_api_request',
+            arguments: {
+              method: 'GET',
+              path: target.path,
+            },
+          },
+        ],
+      };
+    }
+
+    return null;
+  }
+
+  private buildDirectReply(
+    originalMessage: string,
+    toolEvents: Array<{
+      name: string;
+      arguments: Record<string, unknown>;
+      result: unknown;
+      isError: boolean;
+    }>,
+  ) {
+    const lastTool = toolEvents[toolEvents.length - 1];
+    if (!lastTool) {
+      return 'No result.';
+    }
+
+    if (lastTool.isError) {
+      const errorMessage =
+        lastTool.result && typeof lastTool.result === 'object' && 'error' in (lastTool.result as Record<string, unknown>)
+          ? String((lastTool.result as Record<string, unknown>).error)
+          : 'Request failed.';
+      return errorMessage;
+    }
+
+    const result =
+      lastTool.result && typeof lastTool.result === 'object'
+        ? (lastTool.result as Record<string, unknown>)
+        : {};
+    const payload = result.data;
+    const normalized = originalMessage.toLowerCase();
+
+    if (this.isCountIntent(normalized)) {
+      let count = 0;
+
+      if (Array.isArray(payload)) {
+        count = payload.length;
+      } else if (
+        payload &&
+        typeof payload === 'object' &&
+        Array.isArray((payload as Record<string, unknown>).data)
+      ) {
+        count = ((payload as Record<string, unknown>).data as unknown[]).length;
+      } else if (
+        payload &&
+        typeof payload === 'object' &&
+        typeof (payload as Record<string, unknown>).total === 'number'
+      ) {
+        count = Number((payload as Record<string, unknown>).total);
+      }
+
+      const path =
+        typeof result.path === 'string' ? String(result.path).replace(/^\//, '') : 'items';
+      return `Count from ${path}: ${count}.`;
+    }
+
+    return JSON.stringify(result, null, 2);
+  }
+
+  private isCountIntent(normalized: string) {
+    return (
+      /\bhow many\b|\bcount\b|\btotal\b|\bnumber of\b/.test(normalized) ||
+      /\bhow\b.*\bmany\b/.test(normalized) ||
+      /\bhow\b.*\bmnay\b/.test(normalized) ||
+      /\bmnay\b/.test(normalized)
+    );
+  }
+
   private async requestModelPlan(
     actor: JwtUser,
     config: ResolvedProvider,
@@ -337,8 +484,13 @@ export class AiService {
     }>,
   ) {
     const tools = this.aiMcpService.listTools(actor);
+    const roleInstruction = [UserRole.ADMIN, UserRole.SUPER_ADMIN].includes(actor.role)
+      ? 'You are admin AI. Prefer platform_list_routes and platform_api_request. Do not use resident tools.'
+      : actor.role === UserRole.TETENTWONER
+        ? 'You are tenant owner AI. Use owner-scoped platform routes only.'
+        : 'You are resident support AI.';
     const prompt = [
-      `You are resident support AI for property operations platform.`,
+      roleInstruction,
       `Memory policy: ephemeral only. Never mention saving conversation.`,
       `Available tools JSON: ${JSON.stringify(tools)}`,
       `Conversation JSON: ${JSON.stringify(messages)}`,
@@ -366,12 +518,17 @@ export class AiService {
       isError: boolean;
     }>,
   ) {
+    const roleInstruction = [UserRole.ADMIN, UserRole.SUPER_ADMIN].includes(actor.role)
+      ? 'You are admin AI.'
+      : actor.role === UserRole.TETENTWONER
+        ? 'You are tenant owner AI.'
+        : 'You are resident support AI.';
     const prompt = [
-      `You are resident support AI for property operations platform.`,
+      roleInstruction,
       `Conversation JSON: ${JSON.stringify(messages)}`,
       `Tool events JSON: ${JSON.stringify(toolEvents)}`,
       `Return strict JSON only with shape {"reply":"string","toolCalls":[]}.`,
-      `Summarize tool result for resident. If ticket created, mention ticket created.`,
+      `Summarize tool result for user. If action completed, say what happened clearly.`,
       `Keep reply short, clear, action-focused.`,
     ].join('\n');
 
@@ -385,19 +542,41 @@ export class AiService {
     config: ResolvedProvider,
     messages: ChatMessage[],
   ): Promise<string> {
-    switch (config.provider) {
-      case AiProviderKind.OPENAI:
-        return this.callOpenAi(config, messages);
-      case AiProviderKind.ANTHROPIC:
-        return this.callAnthropic(config, messages);
-      case AiProviderKind.GEMINI:
-        return this.callGemini(config, messages);
-      case AiProviderKind.OPENROUTER:
-        return this.callOpenRouter(config, messages);
-      case AiProviderKind.OLLAMA:
-        return this.callOllama(config, messages);
-      default:
-        throw new BadRequestException(`Unsupported provider: ${config.provider}`);
+    try {
+      switch (config.provider) {
+        case AiProviderKind.OPENAI:
+          return this.callOpenAi(config, messages);
+        case AiProviderKind.ANTHROPIC:
+          return this.callAnthropic(config, messages);
+        case AiProviderKind.GEMINI:
+          return this.callGemini(config, messages);
+        case AiProviderKind.OPENROUTER:
+          return this.callOpenRouter(config, messages);
+        case AiProviderKind.OLLAMA:
+          return this.callOllama(config, messages);
+        default:
+          throw new BadRequestException(`Unsupported provider: ${config.provider}`);
+      }
+    } catch (error) {
+      if (axios.isAxiosError(error) && error.code === 'ECONNABORTED') {
+        throw new RequestTimeoutException(
+          `${config.provider} model timed out after ${AI_PROVIDER_TIMEOUT_MS / 1000}s`,
+        );
+      }
+
+      if (axios.isAxiosError(error) && error.response) {
+        const providerMessage =
+          typeof error.response.data?.error?.message === 'string'
+            ? error.response.data.error.message
+            : typeof error.response.data?.message === 'string'
+              ? error.response.data.message
+              : error.message;
+        throw new BadRequestException(
+          `${config.provider} request failed: ${providerMessage}`,
+        );
+      }
+
+      throw error;
     }
   }
 
@@ -423,6 +602,7 @@ export class AiService {
           'Content-Type': 'application/json',
           ...config.headers,
         },
+        timeout: AI_PROVIDER_TIMEOUT_MS,
       },
     );
 
@@ -470,6 +650,7 @@ export class AiService {
           'Content-Type': 'application/json',
           ...config.headers,
         },
+        timeout: AI_PROVIDER_TIMEOUT_MS,
       },
     );
 
@@ -509,6 +690,7 @@ export class AiService {
           'Content-Type': 'application/json',
           ...config.headers,
         },
+        timeout: AI_PROVIDER_TIMEOUT_MS,
       },
     );
 
@@ -532,6 +714,7 @@ export class AiService {
       {
         model: config.model,
         temperature: config.temperature ?? 0.2,
+        max_tokens: 700,
         messages: [
           ...(config.systemPrompt
             ? [{ role: 'system', content: config.systemPrompt }]
@@ -546,8 +729,11 @@ export class AiService {
         headers: {
           Authorization: `Bearer ${config.apiKey}`,
           'Content-Type': 'application/json',
+          'HTTP-Referer': 'http://localhost:3000',
+          'X-Title': 'Property Operations Platform',
           ...config.headers,
         },
+        timeout: AI_PROVIDER_TIMEOUT_MS,
       },
     );
 
@@ -581,6 +767,7 @@ export class AiService {
             : {}),
           ...config.headers,
         },
+        timeout: AI_PROVIDER_TIMEOUT_MS,
       },
     );
 

@@ -175,7 +175,9 @@ export class AiMcpService {
 
   listTools(actor: JwtUser) {
     if ([UserRole.ADMIN, UserRole.SUPER_ADMIN].includes(actor.role)) {
-      return this.tools;
+      return this.tools.filter((tool) =>
+        ['platform_list_routes', 'platform_api_request'].includes(tool.name),
+      );
     }
 
     return this.tools.filter((tool) => tool.roles.includes(actor.role));
@@ -189,11 +191,7 @@ export class AiMcpService {
   ) {
     const tool = this.tools.find((item) => item.name === name);
 
-    const canBypassRoleCheck = [UserRole.ADMIN, UserRole.SUPER_ADMIN].includes(
-      actor.role,
-    );
-
-    if (!tool || (!tool.roles.includes(actor.role) && !canBypassRoleCheck)) {
+    if (!tool || !this.listTools(actor).some((item) => item.name === name)) {
       return this.wrapToolError(`Tool not available: ${name}`);
     }
 
@@ -463,7 +461,7 @@ export class AiMcpService {
   ) {
     const method = this.readRequiredString(args.method, 'Request method required')
       .toUpperCase();
-    const path = this.readRequiredString(args.path, 'Request path required');
+    const rawPath = this.readRequiredString(args.path, 'Request path required');
     const query =
       args.query && typeof args.query === 'object'
         ? (args.query as Record<string, unknown>)
@@ -477,28 +475,42 @@ export class AiMcpService {
       throw new BadRequestException('Unsupported request method');
     }
 
+    const path = this.normalizePlatformPath(rawPath);
     this.assertPathAllowed(actor, path);
 
     if (!context?.baseUrl) {
       throw new BadRequestException('Platform API base URL missing in MCP session');
     }
 
-    const response = await axios.request({
-      method: method as 'GET' | 'POST' | 'PATCH' | 'DELETE',
-      url: `${context.baseUrl}${path}`,
-      params: query,
-      data: body,
-      headers: {
-        ...(context.authHeader ? { Authorization: context.authHeader } : {}),
-      },
-    });
+    try {
+      const response = await axios.request({
+        method: method as 'GET' | 'POST' | 'PATCH' | 'DELETE',
+        url: `${context.baseUrl}${path}`,
+        params: query,
+        data: body,
+        headers: {
+          ...(context.authHeader ? { Authorization: context.authHeader } : {}),
+        },
+      });
 
-    return {
-      method,
-      path,
-      status: response.status,
-      data: response.data,
-    };
+      return {
+        method,
+        path,
+        status: response.status,
+        data: response.data,
+      };
+    } catch (error) {
+      if (axios.isAxiosError(error) && error.response?.status === 404) {
+        return {
+          method,
+          path,
+          error: `Route not found: ${path}`,
+          suggestions: this.suggestPlatformPaths(path),
+        };
+      }
+
+      throw error;
+    }
   }
 
   private async findResidentTenant(actor: JwtUser) {
@@ -619,5 +631,70 @@ export class AiMcpService {
     throw new BadRequestException(
       `Path not allowed for role ${actor.role}: ${normalizedPath}`,
     );
+  }
+
+  private normalizePlatformPath(path: string) {
+    const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+    const aliasMap: Record<string, string> = {
+      '/users': '/user',
+      '/organizations': '/organization',
+      '/properties': '/property',
+      '/units': '/unit',
+      '/tenants': '/tenant',
+      '/tickets': '/ticket',
+      '/technicians': '/technician',
+      '/announcements': '/announcement',
+      '/bills': '/bill',
+      '/finance-entries': '/finance-entry',
+      '/inspections': '/inspection',
+      '/recurring-maintenances': '/recurring-maintenance',
+      '/vendors': '/vendor',
+      '/work-orders': '/work-order',
+      '/subscriptions': '/subscription',
+      '/messages': '/messaging/messages',
+    };
+
+    for (const [alias, actual] of Object.entries(aliasMap)) {
+      if (normalizedPath === alias) return actual;
+      if (normalizedPath.startsWith(`${alias}/`)) {
+        return `${actual}${normalizedPath.slice(alias.length)}`;
+      }
+    }
+
+    return normalizedPath;
+  }
+
+  private suggestPlatformPaths(path: string) {
+    const knownPaths = [
+      '/user',
+      '/organization',
+      '/organization/my',
+      '/property',
+      '/unit',
+      '/tenant',
+      '/ticket',
+      '/technician',
+      '/announcement',
+      '/bill',
+      '/finance-entry',
+      '/inspection',
+      '/recurring-maintenance',
+      '/vendor',
+      '/work-order',
+      '/subscription',
+      '/analytics/dashboard',
+      '/analytics/tickets',
+      '/analytics/occupancy',
+      '/analytics/technicians',
+      '/messaging/messages',
+    ];
+    const base = path.toLowerCase().replace(/\/+$/, '');
+    return knownPaths.filter((item) => {
+      const candidate = item.toLowerCase();
+      return (
+        candidate.includes(base.replace(/^\//, '')) ||
+        base.includes(candidate.replace(/^\//, ''))
+      );
+    }).slice(0, 5);
   }
 }
