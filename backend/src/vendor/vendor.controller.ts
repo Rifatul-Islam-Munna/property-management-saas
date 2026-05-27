@@ -33,7 +33,7 @@ export class VendorController {
   @Post()
   @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.TETENTWONER)
   async create(@Req() req: ExpressRequest, @Body() dto: CreateVendorDto) {
-    const data = await this.vendorService.create(req.user.organizationId ?? '', dto);
+    const data = await this.vendorService.create(req.user.organizationId ?? '', req.user, dto);
     return new SuccessResponseDto(201, 'Vendor created successfully', data);
   }
 
@@ -58,7 +58,7 @@ export class VendorController {
     @Param('id', MongoIdPipe) id: string,
     @Body() dto: UpdateVendorDto,
   ) {
-    const data = await this.vendorService.update(req.user.organizationId ?? '', id, dto);
+    const data = await this.vendorService.update(req.user.organizationId ?? '', req.user, id, dto);
     return new SuccessResponseDto(200, 'Vendor updated successfully', data);
   }
 

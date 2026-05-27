@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
+import type { JwtUser } from 'src/lib/auth.guard';
 import { CreateUnitDto } from './dto/create-unit.dto';
 import { QueryUnitDto } from './dto/query-unit.dto';
 import { UpdateUnitDto } from './dto/update-unit.dto';
@@ -12,8 +13,14 @@ export class UnitService {
     @InjectModel(Unit.name) private readonly unitModel: Model<UnitDocument>,
   ) {}
 
-  async create(organizationId: string, dto: CreateUnitDto): Promise<any> {
-    return this.unitModel.create({ ...dto, organizationId });
+  async create(organizationId: string, actor: JwtUser, dto: CreateUnitDto): Promise<any> {
+    return this.unitModel.create({
+      ...dto,
+      organizationId,
+      updatedByUserId: actor.id,
+      updatedByName: actor.fullName,
+      updatedByRole: actor.role,
+    });
   }
 
   async findAll(organizationId: string, query: QueryUnitDto): Promise<any> {
@@ -70,12 +77,18 @@ export class UnitService {
 
   async update(
     organizationId: string,
+    actor: JwtUser,
     id: string,
     dto: UpdateUnitDto,
   ): Promise<any> {
     const unit = await this.unitModel.findOneAndUpdate(
       { _id: id, organizationId },
-      dto,
+      {
+        ...dto,
+        updatedByUserId: actor.id,
+        updatedByName: actor.fullName,
+        updatedByRole: actor.role,
+      },
       { new: true },
     );
 

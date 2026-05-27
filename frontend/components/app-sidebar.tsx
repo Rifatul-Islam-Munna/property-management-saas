@@ -56,6 +56,7 @@ function buildNav(role: string | undefined, pathname: string) {
           label: "People",
           items: [
             { title: "Users", url: "/dashboard/tenant-owner/users", icon: <UsersIcon /> },
+            { title: "Owner Team", url: "/dashboard/tenant-owner/team", icon: <ShieldIcon /> },
             { title: "Tenants", url: "/dashboard/tenant-owner/tenants", icon: <ShieldIcon /> },
             { title: "Billing", url: "/dashboard/tenant-owner/billing", icon: <CreditCardIcon /> },
             { title: "Technicians", url: "/dashboard/tenant-owner/technicians", icon: <WrenchIcon /> },

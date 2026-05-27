@@ -59,6 +59,15 @@ export class Announcement {
 
   @Prop({ type: String, required: true })
   createdBy: string;
+
+  @Prop({ type: String, default: null })
+  updatedByUserId?: string | null;
+
+  @Prop({ type: String, trim: true, default: null })
+  updatedByName?: string | null;
+
+  @Prop({ type: String, enum: UserRole, default: null })
+  updatedByRole?: UserRole | null;
 }
 
 export const AnnouncementSchema = SchemaFactory.createForClass(Announcement);

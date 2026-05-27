@@ -59,6 +59,7 @@ import {
   useOwnerCreateTechnicianMutation,
   useOwnerCreateTenantMutation,
   useOwnerCreateTicketMutation,
+  useOwnerCreateUserMutation,
   useOwnerCreateUnitMutation,
   useOwnerCreateVendorMutation,
   useOwnerCreateWorkOrderMutation,
@@ -294,6 +295,27 @@ function CreateSheet({
         <div className="px-4 pb-6">{children}</div>
       </SheetContent>
     </Sheet>
+  )
+}
+
+function AuditStamp({
+  item,
+  label = "Last update",
+}: {
+  item?: { updatedByName?: string | null; updatedByRole?: string | null; updatedAt?: string }
+  label?: string
+}) {
+  if (!item?.updatedByName && !item?.updatedAt) return null
+
+  return (
+    <div className="rounded-xl border bg-slate-50 p-4 text-sm text-slate-700">
+      <p className="text-xs uppercase tracking-wide text-slate-500">{label}</p>
+      <p className="mt-1 font-medium text-slate-950">
+        {item.updatedByName ?? "Unknown user"}
+        {item.updatedByRole ? ` • ${item.updatedByRole}` : ""}
+      </p>
+      <p className="mt-1 text-xs text-slate-500">{formatDateLabel(item.updatedAt, "Unknown time")}</p>
+    </div>
   )
 }
 
@@ -640,6 +662,7 @@ export function TenantOwnerPropertiesPage() {
             <SheetDescription>Full property info, contacts, files, and notes.</SheetDescription>
           </SheetHeader>
           <div className="space-y-4 px-4 pb-6">
+            <AuditStamp item={selectedProperty ?? undefined} />
             <div className="rounded-xl border p-4">
               <p className="text-xs uppercase tracking-wide text-slate-500">Type</p>
               <p className="mt-1 font-medium text-slate-950">{selectedProperty?.type ?? "N/A"}</p>
@@ -930,6 +953,7 @@ export function TenantOwnerUnitsPage() {
             <SheetDescription>Full unit details and extra charge templates.</SheetDescription>
           </SheetHeader>
           <div className="space-y-4 px-4 pb-6">
+            <AuditStamp item={selectedUnit ?? undefined} />
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="rounded-xl border p-4"><p className="text-xs uppercase tracking-wide text-slate-500">Status</p><p className="mt-1 font-medium text-slate-950">{selectedUnit?.status ?? "N/A"}</p></div>
               <div className="rounded-xl border p-4"><p className="text-xs uppercase tracking-wide text-slate-500">Rent</p><p className="mt-1 font-medium text-slate-950">{formatMoney(selectedUnit?.monthlyRent, defaultCurrency)}</p></div>
@@ -1292,6 +1316,133 @@ export function TenantOwnerUsersPage() {
           </SheetContent>
         </Sheet>
       </div>
+    </div>
+  )
+}
+
+export function TenantOwnerTeamPage() {
+  const { data: me } = useMeQuery()
+  const users = useOwnerUsersQuery()
+  const createUser = useOwnerCreateUserMutation()
+  const canManageOwnerTeam =
+    me?.role === "tetentwoner" &&
+    (me.canManageOwnerTeam || !me.ownerProfileType || me.ownerProfileType === "primary_owner")
+  const ownerTeam = (Array.isArray(users.data) ? users.data : []).filter((user) => user.role === "tetentwoner")
+  const [isCreateOpen, setIsCreateOpen] = useState(false)
+  const [form, setForm] = useState({
+    fullName: "",
+    email: "",
+    phoneNumber: "",
+    password: "",
+    jobTitle: "",
+    ownerProfileType: "manager" as "co_owner" | "manager",
+  })
+
+  return (
+    <div className="space-y-6">
+      <OwnerPageHero
+        icon={Shield}
+        badge="Owner Team"
+        title="Co-owner and manager access"
+        body="Primary tenant owner can create delegated co-owner or manager accounts. They see same owner dashboard. Only primary owner can add this team."
+      />
+      <div className="flex justify-end">
+        {canManageOwnerTeam ? (
+          <CreateSheet
+            open={isCreateOpen}
+            onOpenChange={setIsCreateOpen}
+            title="Add owner team member"
+            description="Create delegated owner access under same organization."
+            triggerLabel="Add co-owner / manager"
+          >
+            <form
+              className="space-y-4"
+              onSubmit={(event) => {
+                event.preventDefault()
+                createUser.mutate(
+                  {
+                    fullName: form.fullName,
+                    email: form.email,
+                    phoneNumber: form.phoneNumber,
+                    password: form.password,
+                    jobTitle: form.jobTitle || undefined,
+                    role: "tetentwoner",
+                    ownerProfileType: form.ownerProfileType,
+                  },
+                  {
+                    onSuccess: () => {
+                      setForm({
+                        fullName: "",
+                        email: "",
+                        phoneNumber: "",
+                        password: "",
+                        jobTitle: "",
+                        ownerProfileType: "manager",
+                      })
+                      setIsCreateOpen(false)
+                    },
+                  }
+                )
+              }}
+            >
+              <FieldGroup>
+                <Field><FieldLabel>Access type</FieldLabel><Select value={form.ownerProfileType} onValueChange={(value) => setForm((current) => ({ ...current, ownerProfileType: (value ?? "manager") as "co_owner" | "manager" }))}><SelectTrigger className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectGroup><SelectItem value="co_owner">co_owner</SelectItem><SelectItem value="manager">manager</SelectItem></SelectGroup></SelectContent></Select></Field>
+                <Field><FieldLabel>Full name</FieldLabel><Input value={form.fullName} onChange={(event) => setForm((current) => ({ ...current, fullName: event.target.value ?? "" }))} /></Field>
+                <Field><FieldLabel>Email</FieldLabel><Input type="email" value={form.email} onChange={(event) => setForm((current) => ({ ...current, email: event.target.value ?? "" }))} /></Field>
+                <Field><FieldLabel>Phone</FieldLabel><Input value={form.phoneNumber} onChange={(event) => setForm((current) => ({ ...current, phoneNumber: event.target.value ?? "" }))} /></Field>
+                <Field><FieldLabel>Job title</FieldLabel><Input value={form.jobTitle} onChange={(event) => setForm((current) => ({ ...current, jobTitle: event.target.value ?? "" }))} /></Field>
+                <Field><FieldLabel>Password</FieldLabel><Input type="password" value={form.password} onChange={(event) => setForm((current) => ({ ...current, password: event.target.value ?? "" }))} /></Field>
+              </FieldGroup>
+              <Button type="submit" disabled={createUser.isPending || !form.fullName || !form.email || !form.phoneNumber || !form.password}>
+                Create team member
+              </Button>
+            </form>
+          </CreateSheet>
+        ) : null}
+      </div>
+
+      {!canManageOwnerTeam ? (
+        <Card className="shadow-none">
+          <CardContent className="pt-6 text-sm text-slate-600">
+            Only primary tenant owner can add co-owner or manager accounts.
+          </CardContent>
+        </Card>
+      ) : null}
+
+      <Card className="shadow-none">
+        <CardHeader>
+          <CardTitle>Owner team</CardTitle>
+          <CardDescription>Delegated owner users keep full owner dashboard visibility.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {ownerTeam.length ? ownerTeam.map((user) => (
+            <div key={user.id} className="rounded-xl border p-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="font-medium text-slate-950">{user.fullName}</p>
+                    <Badge variant="outline">{user.ownerProfileType ?? "primary_owner"}</Badge>
+                    {user.canManageOwnerTeam ? <Badge>primary access</Badge> : <Badge variant="secondary">delegated</Badge>}
+                  </div>
+                  <p className="mt-2 text-sm text-slate-600">{user.email}</p>
+                </div>
+                <div className="text-right text-xs text-slate-500">
+                  <p>{user.jobTitle ?? "No title"}</p>
+                  <p>{user.phoneNumber}</p>
+                </div>
+              </div>
+            </div>
+          )) : (
+            <Empty>
+              <EmptyHeader>
+                <EmptyMedia variant="icon"><Shield /></EmptyMedia>
+                <EmptyTitle>No owner team yet</EmptyTitle>
+                <EmptyDescription>Create co-owner or manager from this page.</EmptyDescription>
+              </EmptyHeader>
+            </Empty>
+          )}
+        </CardContent>
+      </Card>
     </div>
   )
 }
@@ -1891,6 +2042,7 @@ export function TenantOwnerTenantsPage() {
                         const unitName = unitList.find((unit) => unit._id === selectedTenant.unitId)?.unitNumber ?? "No unit"
                         return (
                           <div className="space-y-4 px-4 pb-6">
+                            <AuditStamp item={selectedTenant} />
                             <div className="grid gap-3 md:grid-cols-2">
                               <div className="rounded-xl border p-4"><p className="text-xs uppercase tracking-wide text-slate-500">Name</p><p className="mt-1 font-medium text-slate-950">{selectedTenant.fullName}</p></div>
                               <div className="rounded-xl border p-4"><p className="text-xs uppercase tracking-wide text-slate-500">Type</p><p className="mt-1 font-medium text-slate-950">{selectedTenant.tenantKind ?? "resident"}</p></div>
@@ -3408,15 +3560,18 @@ export function TenantOwnerTicketsPage() {
           </SheetHeader>
           <div className="space-y-4 px-4 pb-6">
             {selectedTicket ? (
-              <div className="rounded-xl border bg-slate-50 p-4 text-sm">
-                <p className="font-medium text-slate-950">{selectedTicket.title}</p>
-                <p className="mt-1 text-slate-600">{selectedTicket.description}</p>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  <Badge variant="outline">{selectedTicket.status}</Badge>
-                  <Badge variant="secondary">{selectedTicket.priority}</Badge>
-                  <Badge>{selectedTicket.category}</Badge>
+              <>
+                <div className="rounded-xl border bg-slate-50 p-4 text-sm">
+                  <p className="font-medium text-slate-950">{selectedTicket.title}</p>
+                  <p className="mt-1 text-slate-600">{selectedTicket.description}</p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <Badge variant="outline">{selectedTicket.status}</Badge>
+                    <Badge variant="secondary">{selectedTicket.priority}</Badge>
+                    <Badge>{selectedTicket.category}</Badge>
+                  </div>
                 </div>
-              </div>
+                <AuditStamp item={selectedTicket} />
+              </>
             ) : null}
 
             <div className="grid gap-3 md:grid-cols-3">
@@ -3703,7 +3858,7 @@ export function TenantOwnerRecurringPage() {
           <Card className="shadow-none"><CardHeader><CardTitle>Recurring plans</CardTitle><CardDescription>Assigned worker and latest run report show here.</CardDescription></CardHeader><CardContent className="space-y-3">{recurringList.length ? recurringList.map((item) => {
             const assignedWorker = workerList.find((user) => user.id === item.assignedTo)
             const latestRun = [...(item.runHistory ?? [])].sort((left, right) => new Date(right.reportedAt ?? "").getTime() - new Date(left.reportedAt ?? "").getTime())[0]
-            return <div key={item._id} className="rounded-xl border p-4"><div className="flex flex-wrap gap-2"><p className="font-medium text-slate-950">{item.title}</p><Badge variant="outline">{item.frequency}</Badge><Badge variant={item.assignedTo ? "default" : "secondary"}>{assignedWorker?.fullName ?? "Unassigned"}</Badge><Badge variant={item.paymentStatus === "paid" ? "default" : "secondary"}>{item.paymentStatus ?? "unpaid"}</Badge></div><p className="mt-2 text-sm text-slate-600">{item.description ?? "No description"}</p><div className="mt-3 grid gap-3 rounded-xl bg-slate-50 p-3 text-sm sm:grid-cols-5"><div><p className="text-xs uppercase tracking-wide text-slate-500">Next run</p><p className="font-medium text-slate-950">{item.nextRunAt ? new Date(item.nextRunAt).toLocaleDateString() : "No date"}</p></div><div><p className="text-xs uppercase tracking-wide text-slate-500">Latest status</p><p className="font-medium text-slate-950">{latestRun?.status ?? "No report"}</p></div><div><p className="text-xs uppercase tracking-wide text-slate-500">Reported at</p><p className="font-medium text-slate-950">{latestRun?.reportedAt ? new Date(latestRun.reportedAt).toLocaleDateString() : "No report yet"}</p></div><div><p className="text-xs uppercase tracking-wide text-slate-500">Estimated</p><p className="font-medium text-slate-950">{formatMoney(item.estimatedCost ?? 0, (item.currency ?? "usd").toUpperCase())}</p></div><div><p className="text-xs uppercase tracking-wide text-slate-500">Actual</p><p className="font-medium text-slate-950">{formatMoney(item.actualCost ?? 0, (item.currency ?? "usd").toUpperCase())}</p></div></div><div className="mt-3 rounded-xl border bg-white p-3"><p className="text-xs uppercase tracking-wide text-slate-500">Latest worker note</p><p className="mt-1 text-sm text-slate-700">{latestRun?.note ?? "Worker has not submitted report yet."}</p></div>{latestRun?.status === "completed" ? <div className="mt-3 flex flex-wrap gap-2"><Button type="button" size="sm" variant={item.paymentStatus === "paid" ? "default" : "outline"} onClick={() => updateRecurring.mutate({ id: item._id, payload: { paymentStatus: "paid" } })}>Paid</Button><Button type="button" size="sm" variant={item.paymentStatus === "unpaid" ? "default" : "outline"} onClick={() => updateRecurring.mutate({ id: item._id, payload: { paymentStatus: "unpaid" } })}>Unpaid</Button></div> : null}</div>
+            return <div key={item._id} className="rounded-xl border p-4"><div className="flex flex-wrap gap-2"><p className="font-medium text-slate-950">{item.title}</p><Badge variant="outline">{item.frequency}</Badge><Badge variant={item.assignedTo ? "default" : "secondary"}>{assignedWorker?.fullName ?? "Unassigned"}</Badge><Badge variant={item.paymentStatus === "paid" ? "default" : "secondary"}>{item.paymentStatus ?? "unpaid"}</Badge></div><p className="mt-2 text-sm text-slate-600">{item.description ?? "No description"}</p><div className="mt-3 grid gap-3 rounded-xl bg-slate-50 p-3 text-sm sm:grid-cols-5"><div><p className="text-xs uppercase tracking-wide text-slate-500">Next run</p><p className="font-medium text-slate-950">{item.nextRunAt ? new Date(item.nextRunAt).toLocaleDateString() : "No date"}</p></div><div><p className="text-xs uppercase tracking-wide text-slate-500">Latest status</p><p className="font-medium text-slate-950">{latestRun?.status ?? "No report"}</p></div><div><p className="text-xs uppercase tracking-wide text-slate-500">Reported at</p><p className="font-medium text-slate-950">{latestRun?.reportedAt ? new Date(latestRun.reportedAt).toLocaleDateString() : "No report yet"}</p></div><div><p className="text-xs uppercase tracking-wide text-slate-500">Estimated</p><p className="font-medium text-slate-950">{formatMoney(item.estimatedCost ?? 0, (item.currency ?? "usd").toUpperCase())}</p></div><div><p className="text-xs uppercase tracking-wide text-slate-500">Actual</p><p className="font-medium text-slate-950">{formatMoney(item.actualCost ?? 0, (item.currency ?? "usd").toUpperCase())}</p></div></div><div className="mt-3 rounded-xl border bg-white p-3"><p className="text-xs uppercase tracking-wide text-slate-500">Latest worker note</p><p className="mt-1 text-sm text-slate-700">{latestRun?.note ?? "Worker has not submitted report yet."}</p></div><div className="mt-3"><AuditStamp item={item} /></div>{latestRun?.status === "completed" ? <div className="mt-3 flex flex-wrap gap-2"><Button type="button" size="sm" variant={item.paymentStatus === "paid" ? "default" : "outline"} onClick={() => updateRecurring.mutate({ id: item._id, payload: { paymentStatus: "paid" } })}>Paid</Button><Button type="button" size="sm" variant={item.paymentStatus === "unpaid" ? "default" : "outline"} onClick={() => updateRecurring.mutate({ id: item._id, payload: { paymentStatus: "unpaid" } })}>Unpaid</Button></div> : null}</div>
           }) : <Empty><EmptyHeader><EmptyMedia variant="icon"><Repeat /></EmptyMedia><EmptyTitle>No recurring maintenance yet</EmptyTitle><EmptyDescription>Create first recurring maintenance from top sheet.</EmptyDescription></EmptyHeader></Empty>}</CardContent></Card>
         </WithBone>
       </div>
@@ -3773,7 +3928,7 @@ export function TenantOwnerInspectionsPage() {
         <WithBone name="owner-page-inspections" loading={inspections.isLoading} fallback={<DashboardTableSkeleton />}>
           <Card className="shadow-none"><CardHeader><CardTitle>Inspections</CardTitle><CardDescription>Assigned worker, worker report, and cost tracking now visible here.</CardDescription></CardHeader><CardContent className="space-y-3">{inspectionList.length ? inspectionList.map((item) => {
             const assignedWorker = workerList.find((user) => user.id === item.assignedTo)
-            return <div key={item._id} className="rounded-xl border p-4"><div className="flex flex-wrap gap-2"><p className="font-medium text-slate-950">{item.type}</p><Badge variant={item.completed ? "default" : "outline"}>{item.completed ? "Done" : "Pending"}</Badge><Badge variant={item.assignedTo ? "default" : "secondary"}>{assignedWorker?.fullName ?? "Unassigned"}</Badge><Badge variant={item.paymentStatus === "paid" ? "default" : "secondary"}>{item.paymentStatus ?? "unpaid"}</Badge></div><p className="mt-2 text-sm text-slate-600">{item.scheduledAt ? new Date(item.scheduledAt).toLocaleDateString() : "No date"}</p><div className="mt-3 grid gap-3 rounded-xl bg-slate-50 p-3 text-sm sm:grid-cols-4"><div><p className="text-xs uppercase tracking-wide text-slate-500">Worker report</p><p className="font-medium text-slate-950">{item.workerReport ?? "No report yet"}</p></div><div><p className="text-xs uppercase tracking-wide text-slate-500">Reported at</p><p className="font-medium text-slate-950">{item.workerReportedAt ? new Date(item.workerReportedAt).toLocaleDateString() : "Not submitted"}</p></div><div><p className="text-xs uppercase tracking-wide text-slate-500">Estimated</p><p className="font-medium text-slate-950">{formatMoney(item.estimatedCost ?? 0, (item.currency ?? "usd").toUpperCase())}</p></div><div><p className="text-xs uppercase tracking-wide text-slate-500">Actual</p><p className="font-medium text-slate-950">{formatMoney(item.actualCost ?? 0, (item.currency ?? "usd").toUpperCase())}</p></div></div><div className="mt-3 rounded-xl border bg-white p-3"><p className="text-xs uppercase tracking-wide text-slate-500">Damage report</p><p className="mt-1 text-sm text-slate-700">{item.damageReport ?? "No damage report"}</p></div>{item.completed ? <div className="mt-3 flex flex-wrap gap-2"><Button type="button" size="sm" variant={item.paymentStatus === "paid" ? "default" : "outline"} onClick={() => updateInspection.mutate({ id: item._id, payload: { paymentStatus: "paid" } })}>Paid</Button><Button type="button" size="sm" variant={item.paymentStatus === "unpaid" ? "default" : "outline"} onClick={() => updateInspection.mutate({ id: item._id, payload: { paymentStatus: "unpaid" } })}>Unpaid</Button></div> : null}</div>
+            return <div key={item._id} className="rounded-xl border p-4"><div className="flex flex-wrap gap-2"><p className="font-medium text-slate-950">{item.type}</p><Badge variant={item.completed ? "default" : "outline"}>{item.completed ? "Done" : "Pending"}</Badge><Badge variant={item.assignedTo ? "default" : "secondary"}>{assignedWorker?.fullName ?? "Unassigned"}</Badge><Badge variant={item.paymentStatus === "paid" ? "default" : "secondary"}>{item.paymentStatus ?? "unpaid"}</Badge></div><p className="mt-2 text-sm text-slate-600">{item.scheduledAt ? new Date(item.scheduledAt).toLocaleDateString() : "No date"}</p><div className="mt-3 grid gap-3 rounded-xl bg-slate-50 p-3 text-sm sm:grid-cols-4"><div><p className="text-xs uppercase tracking-wide text-slate-500">Worker report</p><p className="font-medium text-slate-950">{item.workerReport ?? "No report yet"}</p></div><div><p className="text-xs uppercase tracking-wide text-slate-500">Reported at</p><p className="font-medium text-slate-950">{item.workerReportedAt ? new Date(item.workerReportedAt).toLocaleDateString() : "Not submitted"}</p></div><div><p className="text-xs uppercase tracking-wide text-slate-500">Estimated</p><p className="font-medium text-slate-950">{formatMoney(item.estimatedCost ?? 0, (item.currency ?? "usd").toUpperCase())}</p></div><div><p className="text-xs uppercase tracking-wide text-slate-500">Actual</p><p className="font-medium text-slate-950">{formatMoney(item.actualCost ?? 0, (item.currency ?? "usd").toUpperCase())}</p></div></div><div className="mt-3 rounded-xl border bg-white p-3"><p className="text-xs uppercase tracking-wide text-slate-500">Damage report</p><p className="mt-1 text-sm text-slate-700">{item.damageReport ?? "No damage report"}</p></div><div className="mt-3"><AuditStamp item={item} /></div>{item.completed ? <div className="mt-3 flex flex-wrap gap-2"><Button type="button" size="sm" variant={item.paymentStatus === "paid" ? "default" : "outline"} onClick={() => updateInspection.mutate({ id: item._id, payload: { paymentStatus: "paid" } })}>Paid</Button><Button type="button" size="sm" variant={item.paymentStatus === "unpaid" ? "default" : "outline"} onClick={() => updateInspection.mutate({ id: item._id, payload: { paymentStatus: "unpaid" } })}>Unpaid</Button></div> : null}</div>
           }) : <Empty><EmptyHeader><EmptyMedia variant="icon"><ClipboardCheck /></EmptyMedia><EmptyTitle>No inspections yet</EmptyTitle><EmptyDescription>Create first inspection from top sheet.</EmptyDescription></EmptyHeader></Empty>}</CardContent></Card>
         </WithBone>
       </div>

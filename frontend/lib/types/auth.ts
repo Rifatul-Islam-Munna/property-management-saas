@@ -15,6 +15,8 @@ export type AuthUser = {
   propertyIds?: string[]
   activePropertyId?: string | null
   isGlobalProfile?: boolean
+  ownerProfileType?: "primary_owner" | "co_owner" | "manager" | null
+  canManageOwnerTeam: boolean
   role: "super_admin" | "admin" | "tetentwoner" | "worker" | "renter" | "guest"
   status: "invited" | "active" | "suspended"
   subscriptionTier?: "starter" | "growth" | "enterprise" | null

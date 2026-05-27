@@ -24,6 +24,9 @@ export class AnnouncementService {
       ...dto,
       organizationId,
       createdBy: actor.id,
+      updatedByUserId: actor.id,
+      updatedByName: actor.fullName,
+      updatedByRole: actor.role,
       audience: dto.audience ?? NoticeAudience.ALL,
       targetRoles: dto.targetRoles ?? [],
       targetUserIds: dto.targetUserIds ?? [],
@@ -87,6 +90,9 @@ export class AnnouncementService {
       ...dto,
       organizationId,
       createdBy: actor.id,
+      updatedByUserId: actor.id,
+      updatedByName: actor.fullName,
+      updatedByRole: actor.role,
       type: AnnouncementType.NOTICE,
       audience: dto.audience ?? NoticeAudience.ROLE_BASED,
       targetRoles: dto.targetRoles?.length ? dto.targetRoles : ['renter', 'guest'],
@@ -103,10 +109,15 @@ export class AnnouncementService {
     return announcement;
   }
 
-  async update(organizationId: string, id: string, dto: UpdateAnnouncementDto) {
+  async update(organizationId: string, actor: JwtUser, id: string, dto: UpdateAnnouncementDto) {
     const announcement = await this.announcementModel.findOneAndUpdate(
       { _id: id, organizationId },
-      dto,
+      {
+        ...dto,
+        updatedByUserId: actor.id,
+        updatedByName: actor.fullName,
+        updatedByRole: actor.role,
+      },
       { new: true },
     );
     if (!announcement) throw new NotFoundException('Announcement not found');

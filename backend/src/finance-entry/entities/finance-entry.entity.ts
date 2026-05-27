@@ -1,6 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument } from 'mongoose';
+import { UserRole } from 'src/user/entities/user.entity';
 
 export enum FinanceEntryKind {
   EARNING = 'earning',
@@ -87,6 +88,18 @@ export class FinanceEntry {
   @ApiProperty()
   @Prop({ type: String, required: true })
   createdBy: string;
+
+  @ApiPropertyOptional({ example: '6650dc1f31d889f2435b2a11' })
+  @Prop({ type: String, default: null })
+  updatedByUserId?: string | null;
+
+  @ApiPropertyOptional({ example: 'Jane Owner' })
+  @Prop({ type: String, trim: true, default: null })
+  updatedByName?: string | null;
+
+  @ApiPropertyOptional({ enum: UserRole, example: UserRole.TETENTWONER })
+  @Prop({ type: String, enum: UserRole, default: null })
+  updatedByRole?: UserRole | null;
 }
 
 export const FinanceEntrySchema = SchemaFactory.createForClass(FinanceEntry);

@@ -23,6 +23,12 @@ export enum OwnerSubscriptionTier {
   ENTERPRISE = 'enterprise',
 }
 
+export enum OwnerProfileType {
+  PRIMARY_OWNER = 'primary_owner',
+  CO_OWNER = 'co_owner',
+  MANAGER = 'manager',
+}
+
 export type UserDocument = HydratedDocument<User>;
 
 @Schema({ timestamps: true })
@@ -95,6 +101,21 @@ export class User {
   @ApiPropertyOptional({ example: true })
   @Prop({ type: Boolean, default: false })
   isGlobalProfile: boolean;
+
+  @ApiPropertyOptional({
+    enum: OwnerProfileType,
+    example: OwnerProfileType.PRIMARY_OWNER,
+  })
+  @Prop({
+    type: String,
+    enum: OwnerProfileType,
+    default: OwnerProfileType.PRIMARY_OWNER,
+  })
+  ownerProfileType?: OwnerProfileType | null;
+
+  @ApiPropertyOptional({ example: true })
+  @Prop({ type: Boolean, default: false })
+  canManageOwnerTeam: boolean;
 
   @ApiPropertyOptional({ enum: OwnerSubscriptionTier, example: OwnerSubscriptionTier.STARTER })
   @Prop({ type: String, enum: OwnerSubscriptionTier, default: null })

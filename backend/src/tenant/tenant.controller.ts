@@ -71,6 +71,7 @@ export class TenantController {
     const data = await this.tenantService.create(
       req.user.organizationId ?? '',
       req.user.id,
+      req.user,
       dto,
     );
     return new SuccessResponseDto(201, 'Tenant created successfully', data);
@@ -112,6 +113,7 @@ export class TenantController {
     const data = await this.tenantService.update(
       req.user.organizationId ?? '',
       req.user.id,
+      req.user,
       id,
       dto,
     );
@@ -127,6 +129,7 @@ export class TenantController {
   ): Promise<SuccessResponseDto<any>> {
     const data = await this.tenantService.recordPayment(
       req.user.organizationId ?? '',
+      req.user,
       id,
       dto,
     );

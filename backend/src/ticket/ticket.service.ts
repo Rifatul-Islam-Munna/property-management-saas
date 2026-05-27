@@ -34,6 +34,9 @@ export class TicketService {
       ...dto,
       organizationId,
       createdBy: actor.id,
+      updatedByUserId: actor.id,
+      updatedByName: actor.fullName,
+      updatedByRole: actor.role,
       timeline: [
         {
           action: 'created',
@@ -146,6 +149,9 @@ export class TicketService {
     }
 
     Object.assign(existing, sanitizedPayload);
+    existing.updatedByUserId = actor.id;
+    existing.updatedByName = actor.fullName;
+    existing.updatedByRole = actor.role;
     existing.timeline.push({
       action: 'updated',
       performedBy: actor.id,
@@ -169,6 +175,9 @@ export class TicketService {
 
     ticket.assignedTo = assignedTo;
     ticket.status = TicketStatus.ASSIGNED;
+    ticket.updatedByUserId = actor.id;
+    ticket.updatedByName = actor.fullName;
+    ticket.updatedByRole = actor.role;
     ticket.timeline.push({
       action: 'assigned',
       performedBy: actor.id,
@@ -197,6 +206,9 @@ export class TicketService {
       content: dto.content,
       createdAt: new Date(),
     });
+    ticket.updatedByUserId = actor.id;
+    ticket.updatedByName = actor.fullName;
+    ticket.updatedByRole = actor.role;
     ticket.timeline.push({
       action: 'comment_added',
       performedBy: actor.id,
@@ -225,6 +237,9 @@ export class TicketService {
       content: dto.content,
       createdAt: new Date(),
     });
+    ticket.updatedByUserId = actor.id;
+    ticket.updatedByName = actor.fullName;
+    ticket.updatedByRole = actor.role;
     ticket.timeline.push({
       action: 'internal_note_added',
       performedBy: actor.id,

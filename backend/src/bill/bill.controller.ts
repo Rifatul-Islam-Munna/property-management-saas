@@ -66,7 +66,7 @@ export class BillController {
   @Patch(':id')
   @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.TETENTWONER)
   async update(@Req() req: ExpressRequest, @Param('id', MongoIdPipe) id: string, @Body() dto: UpdateBillDto): Promise<SuccessResponseDto> {
-    const data = await this.billService.update(req.user.organizationId ?? '', id, dto);
+    const data = await this.billService.update(req.user.organizationId ?? '', req.user, id, dto);
     return new SuccessResponseDto(200, 'Bill updated successfully', data);
   }
 

@@ -31,6 +31,9 @@ export class RecurringMaintenanceService {
       ...dto,
       organizationId,
       createdBy: actor.id,
+      updatedByUserId: actor.id,
+      updatedByName: actor.fullName,
+      updatedByRole: actor.role,
       runHistory: [],
     });
     return this.enrichRecurring(item.toObject());
@@ -68,12 +71,21 @@ export class RecurringMaintenanceService {
     return this.enrichRecurring(item);
   }
 
-  async update(organizationId: string, id: string, dto: UpdateRecurringMaintenanceDto): Promise<any> {
+  async update(organizationId: string, actor: JwtUser, id: string, dto: UpdateRecurringMaintenanceDto): Promise<any> {
     const updatePayload: Record<string, unknown> = { ...dto };
     if (dto.paymentStatus !== undefined) {
       updatePayload.paidAt = dto.paymentStatus === 'paid' ? new Date() : null;
     }
-    const item = await this.recurringModel.findOneAndUpdate({ _id: id, organizationId }, updatePayload, { new: true });
+    const item = await this.recurringModel.findOneAndUpdate(
+      { _id: id, organizationId },
+      {
+        ...updatePayload,
+        updatedByUserId: actor.id,
+        updatedByName: actor.fullName,
+        updatedByRole: actor.role,
+      },
+      { new: true },
+    );
     if (!item) throw new NotFoundException('Recurring maintenance not found');
     return this.enrichRecurring(item.toObject());
   }
@@ -114,6 +126,9 @@ export class RecurringMaintenanceService {
       item.paymentStatus = dto.paymentStatus as 'unpaid' | 'paid';
       item.paidAt = dto.paymentStatus === 'paid' ? new Date() : null;
     }
+    item.updatedByUserId = actor.id;
+    item.updatedByName = actor.fullName;
+    item.updatedByRole = actor.role;
 
     await item.save();
     return this.enrichRecurring(item.toObject());

@@ -1,6 +1,7 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { HydratedDocument } from 'mongoose';
+import { UserRole } from 'src/user/entities/user.entity';
 
 export enum PropertyType {
   APARTMENT = 'apartment',
@@ -98,6 +99,18 @@ export class Property {
   @ApiPropertyOptional({ example: '6650dc1f31d889f2435b2a11' })
   @Prop({ type: String, default: null })
   createdBy?: string | null;
+
+  @ApiPropertyOptional({ example: '6650dc1f31d889f2435b2a11' })
+  @Prop({ type: String, default: null })
+  updatedByUserId?: string | null;
+
+  @ApiPropertyOptional({ example: 'Jane Owner' })
+  @Prop({ type: String, trim: true, default: null })
+  updatedByName?: string | null;
+
+  @ApiPropertyOptional({ enum: UserRole, example: UserRole.TETENTWONER })
+  @Prop({ type: String, enum: UserRole, default: null })
+  updatedByRole?: UserRole | null;
 }
 
 export const PropertySchema = SchemaFactory.createForClass(Property);

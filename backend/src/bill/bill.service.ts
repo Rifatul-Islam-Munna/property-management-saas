@@ -39,6 +39,9 @@ export class BillService {
       currency: dto.currency?.trim()?.toUpperCase() ?? defaultCurrency,
       dueDate: dto.dueDate ? new Date(dto.dueDate) : null,
       createdBy: actor.id,
+      updatedByUserId: actor.id,
+      updatedByName: actor.fullName,
+      updatedByRole: actor.role,
       attachments: dto.attachments ?? [],
       paymentMode: 'manual',
     });
@@ -107,13 +110,16 @@ export class BillService {
     return bill;
   }
 
-  async update(organizationId: string, id: string, dto: UpdateBillDto): Promise<any> {
+  async update(organizationId: string, actor: JwtUser, id: string, dto: UpdateBillDto): Promise<any> {
     const bill = await this.billModel.findOneAndUpdate(
       { _id: id, organizationId },
       {
         ...dto,
         dueDate: dto.dueDate ? new Date(dto.dueDate) : dto.dueDate,
         paidAt: dto.status === 'paid' ? new Date() : undefined,
+        updatedByUserId: actor.id,
+        updatedByName: actor.fullName,
+        updatedByRole: actor.role,
       },
       { new: true },
     );
@@ -178,6 +184,9 @@ export class BillService {
     bill.paymentToken = paymentToken;
     bill.stripeCheckoutStatus = data.status ?? 'open';
     bill.stripeCheckoutSessionId = data.id ?? null;
+    bill.updatedByUserId = actor.id;
+    bill.updatedByName = actor.fullName;
+    bill.updatedByRole = actor.role;
     await bill.save();
 
     return {
@@ -239,6 +248,9 @@ export class BillService {
         attachments: [],
         note: paymentRecord?.note ?? null,
         createdBy: tenant.userId ?? actor.id,
+        updatedByUserId: actor.id,
+        updatedByName: actor.fullName,
+        updatedByRole: actor.role,
         paymentMode: 'manual',
       }));
 
@@ -284,6 +296,9 @@ export class BillService {
     bill.stripePaymentMethodType = Array.isArray(session.payment_method_types)
       ? session.payment_method_types[0] ?? null
       : null;
+    bill.updatedByUserId = actor.id;
+    bill.updatedByName = actor.fullName;
+    bill.updatedByRole = actor.role;
 
     if (session.invoice) {
       try {

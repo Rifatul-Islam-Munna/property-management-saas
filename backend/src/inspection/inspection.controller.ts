@@ -50,7 +50,7 @@ export class InspectionController {
     @Param('id', MongoIdPipe) id: string,
     @Body() dto: UpdateInspectionDto,
   ): Promise<SuccessResponseDto<any>> {
-    const data = await this.inspectionService.update(req.user.organizationId ?? '', id, dto);
+    const data = await this.inspectionService.update(req.user.organizationId ?? '', req.user, id, dto);
     return new SuccessResponseDto(200, 'Inspection updated successfully', data);
   }
 

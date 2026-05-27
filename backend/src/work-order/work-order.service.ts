@@ -20,6 +20,9 @@ export class WorkOrderService {
       ...dto,
       organizationId,
       createdBy: actor.id,
+      updatedByUserId: actor.id,
+      updatedByName: actor.fullName,
+      updatedByRole: actor.role,
     });
 
     return workOrder.toObject();
@@ -80,7 +83,12 @@ export class WorkOrderService {
 
     const workOrder = await this.workOrderModel.findOneAndUpdate(
       filter,
-      updatePayload,
+      {
+        ...updatePayload,
+        updatedByUserId: actor.id,
+        updatedByName: actor.fullName,
+        updatedByRole: actor.role,
+      },
       { new: true },
     );
     if (!workOrder) throw new NotFoundException('Work order not found');
@@ -93,6 +101,9 @@ export class WorkOrderService {
     workOrder.status = WorkOrderStatus.COMPLETED;
     workOrder.verifiedBy = actor.id;
     workOrder.verifiedAt = new Date();
+    workOrder.updatedByUserId = actor.id;
+    workOrder.updatedByName = actor.fullName;
+    workOrder.updatedByRole = actor.role;
     await workOrder.save();
     return workOrder.toObject();
   }

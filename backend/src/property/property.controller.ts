@@ -37,7 +37,7 @@ export class PropertyController {
   ): Promise<SuccessResponseDto<any>> {
     const data = await this.propertyService.create(
       req.user.organizationId ?? '',
-      req.user.id,
+      req.user,
       dto,
     );
     return new SuccessResponseDto(201, 'Property created successfully', data);
@@ -78,6 +78,7 @@ export class PropertyController {
   ): Promise<SuccessResponseDto<any>> {
     const data = await this.propertyService.update(
       req.user.organizationId ?? '',
+      req.user,
       id,
       dto,
     );

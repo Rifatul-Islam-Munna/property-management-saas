@@ -87,7 +87,7 @@ export class AnnouncementController {
     @Param('id', MongoIdPipe) id: string,
     @Body() dto: UpdateAnnouncementDto,
   ) {
-    const data = await this.announcementService.update(req.user.organizationId ?? '', id, dto);
+    const data = await this.announcementService.update(req.user.organizationId ?? '', req.user, id, dto);
     return new SuccessResponseDto(200, 'Announcement updated successfully', data);
   }
 

@@ -1,5 +1,12 @@
 import type { AuthUser } from "@/lib/types/auth"
 
+type AuditFields = {
+  updatedByUserId?: string | null
+  updatedByName?: string | null
+  updatedByRole?: "super_admin" | "admin" | "tetentwoner" | "worker" | "renter" | "guest" | null
+  updatedAt?: string
+}
+
 export type DashboardRoleKey =
   | "admin"
   | "tenant-owner"
@@ -70,7 +77,7 @@ export type TechnicianStats = {
   totalTenants: number
 }
 
-export type FinanceEntryItem = {
+export type FinanceEntryItem = AuditFields & {
   _id: string
   organizationId: string
   kind: "earning" | "expense"
@@ -98,7 +105,7 @@ export type OrganizationItem = {
   isActive: boolean
 }
 
-export type PropertyItem = {
+export type PropertyItem = AuditFields & {
   _id: string
   name: string
   type: string
@@ -120,7 +127,7 @@ export type PropertyItem = {
   isActive?: boolean
 }
 
-export type UnitItem = {
+export type UnitItem = AuditFields & {
   _id: string
   propertyId?: string
   unitNumber: string
@@ -143,7 +150,7 @@ export type UnitItem = {
   isActive?: boolean
 }
 
-export type TenantItem = {
+export type TenantItem = AuditFields & {
   _id: string
   propertyId?: string
   userId?: string | null
@@ -179,7 +186,7 @@ export type TenantItem = {
   createdAt?: string
 }
 
-export type BillItem = {
+export type BillItem = AuditFields & {
   _id: string
   tenantId: string
   recipientUserId?: string | null
@@ -208,7 +215,7 @@ export type BillItem = {
   createdAt?: string
 }
 
-export type TicketItem = {
+export type TicketItem = AuditFields & {
   _id: string
   propertyId?: string
   propertyName?: string | null
@@ -285,7 +292,7 @@ export type SubscriptionItem = {
   currentPeriodEnd?: string | null
 }
 
-export type AnnouncementItem = {
+export type AnnouncementItem = AuditFields & {
   _id: string
   title: string
   content: string
@@ -298,7 +305,7 @@ export type AnnouncementItem = {
   createdAt?: string
 }
 
-export type WorkOrderItem = {
+export type WorkOrderItem = AuditFields & {
   _id: string
   propertyId?: string
   unitId?: string | null
@@ -318,7 +325,7 @@ export type WorkOrderItem = {
   verifiedAt?: string | null
 }
 
-export type InspectionItem = {
+export type InspectionItem = AuditFields & {
   _id: string
   propertyId?: string
   propertyName?: string | null
@@ -344,7 +351,7 @@ export type InspectionItem = {
   completedAt?: string | null
 }
 
-export type RecurringMaintenanceItem = {
+export type RecurringMaintenanceItem = AuditFields & {
   _id: string
   propertyId?: string
   propertyName?: string | null
@@ -426,7 +433,7 @@ export type ResidentWorkspace = {
   } | null
 }
 
-export type VendorItem = {
+export type VendorItem = AuditFields & {
   _id: string
   name: string
   category: string

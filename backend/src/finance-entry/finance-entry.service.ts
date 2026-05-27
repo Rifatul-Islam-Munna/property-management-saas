@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
+import type { JwtUser } from 'src/lib/auth.guard';
 import { Organization, OrganizationDocument } from 'src/organization/entities/organization.entity';
 import { CreateFinanceEntryDto } from './dto/create-finance-entry.dto';
 import { QueryFinanceEntryDto } from './dto/query-finance-entry.dto';
@@ -16,13 +17,16 @@ export class FinanceEntryService {
     private readonly organizationModel: Model<OrganizationDocument>,
   ) {}
 
-  async create(organizationId: string, createdBy: string, dto: CreateFinanceEntryDto): Promise<any> {
+  async create(organizationId: string, actor: JwtUser, dto: CreateFinanceEntryDto): Promise<any> {
     const organization = await this.organizationModel.findById(organizationId).lean();
     const defaultCurrency = String(organization?.settings?.stripe?.defaultCurrency ?? 'USD').toUpperCase();
     const entry = await this.financeEntryModel.create({
       ...dto,
       organizationId,
-      createdBy,
+      createdBy: actor.id,
+      updatedByUserId: actor.id,
+      updatedByName: actor.fullName,
+      updatedByRole: actor.role,
       category: dto.category.trim().toLowerCase(),
       currency: dto.currency?.trim()?.toUpperCase() ?? defaultCurrency,
       occurredAt: new Date(dto.occurredAt),
@@ -70,7 +74,7 @@ export class FinanceEntryService {
     return entry;
   }
 
-  async update(organizationId: string, id: string, dto: UpdateFinanceEntryDto): Promise<any> {
+  async update(organizationId: string, actor: JwtUser, id: string, dto: UpdateFinanceEntryDto): Promise<any> {
     const entry = await this.financeEntryModel.findOneAndUpdate(
       { _id: id, organizationId },
       {
@@ -78,6 +82,9 @@ export class FinanceEntryService {
         category: dto.category?.trim().toLowerCase(),
         currency: dto.currency?.trim()?.toUpperCase(),
         occurredAt: dto.occurredAt ? new Date(dto.occurredAt) : undefined,
+        updatedByUserId: actor.id,
+        updatedByName: actor.fullName,
+        updatedByRole: actor.role,
       },
       { new: true },
     );

@@ -9,13 +9,17 @@ import { JwtService } from '@nestjs/jwt';
 import type { Request } from 'express';
 import { UserRole } from 'src/user/entities/user.entity';
 import { UserStatus } from 'src/user/entities/user.entity';
+import { OwnerProfileType } from 'src/user/entities/user.entity';
 
 export type JwtUser = {
   email: string;
+  fullName: string;
   id: string;
   role: UserRole;
   organizationId?: string | null;
   status?: UserStatus;
+  ownerProfileType?: OwnerProfileType | null;
+  canManageOwnerTeam?: boolean;
 };
 
 export interface ExpressRequest extends Request {

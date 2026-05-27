@@ -1,5 +1,6 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument } from 'mongoose';
+import { UserRole } from 'src/user/entities/user.entity';
 
 export enum RecurringFrequency {
   WEEKLY = 'weekly',
@@ -98,6 +99,15 @@ export class RecurringMaintenance {
 
   @Prop({ type: String, required: true })
   createdBy: string;
+
+  @Prop({ type: String, default: null })
+  updatedByUserId?: string | null;
+
+  @Prop({ type: String, trim: true, default: null })
+  updatedByName?: string | null;
+
+  @Prop({ type: String, enum: UserRole, default: null })
+  updatedByRole?: UserRole | null;
 }
 
 export const RecurringMaintenanceSchema = SchemaFactory.createForClass(RecurringMaintenance);

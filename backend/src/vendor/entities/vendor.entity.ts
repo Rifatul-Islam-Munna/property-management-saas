@@ -1,5 +1,6 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument } from 'mongoose';
+import { UserRole } from 'src/user/entities/user.entity';
 
 export enum VendorCategory {
   ELECTRICIAN = 'electrician',
@@ -52,6 +53,15 @@ export class Vendor {
 
   @Prop({ type: Boolean, default: true })
   isActive: boolean;
+
+  @Prop({ type: String, default: null })
+  updatedByUserId?: string | null;
+
+  @Prop({ type: String, trim: true, default: null })
+  updatedByName?: string | null;
+
+  @Prop({ type: String, enum: UserRole, default: null })
+  updatedByRole?: UserRole | null;
 }
 
 export const VendorSchema = SchemaFactory.createForClass(Vendor);

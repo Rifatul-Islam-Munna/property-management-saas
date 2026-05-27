@@ -29,6 +29,7 @@ import {
   AssignmentRequestStatus,
 } from './entities/assignment-request.entity';
 import {
+  OwnerProfileType,
   OwnerSubscriptionTier,
   User,
   UserDocument,
@@ -54,6 +55,8 @@ export type UserResponse = {
   propertyIds: string[];
   activePropertyId?: string | null;
   isGlobalProfile: boolean;
+  ownerProfileType?: OwnerProfileType | null;
+  canManageOwnerTeam: boolean;
   subscriptionTier?: OwnerSubscriptionTier | null;
   subscriptionRequired: boolean;
   subscriptionActive: boolean;
@@ -87,6 +90,8 @@ type AuthPayloadUser = {
   propertyIds: string[];
   activePropertyId?: string | null;
   isGlobalProfile: boolean;
+  ownerProfileType?: OwnerProfileType | null;
+  canManageOwnerTeam: boolean;
   subscriptionTier?: OwnerSubscriptionTier | null;
   subscriptionRequired: boolean;
   subscriptionActive: boolean;
@@ -154,6 +159,9 @@ export class UserService {
       propertyIds: createUserDto.propertyIds ?? [],
       activePropertyId: createUserDto.propertyIds?.[0] ?? null,
       isGlobalProfile: false,
+      ownerProfileType:
+        requestedRole === UserRole.TETENTWONER ? OwnerProfileType.PRIMARY_OWNER : null,
+      canManageOwnerTeam: requestedRole === UserRole.TETENTWONER,
       subscriptionTier:
         requestedRole === UserRole.TETENTWONER ? OwnerSubscriptionTier.STARTER : null,
       subscriptionRequired: requestedRole === UserRole.TETENTWONER,
@@ -187,6 +195,8 @@ export class UserService {
       propertyIds: [],
       activePropertyId: null,
       isGlobalProfile: true,
+      ownerProfileType: null,
+      canManageOwnerTeam: false,
       subscriptionTier: null,
       subscriptionRequired: false,
       subscriptionActive: false,
@@ -230,6 +240,9 @@ export class UserService {
       propertyIds: [],
       activePropertyId: null,
       isGlobalProfile: isGlobalUser,
+      ownerProfileType:
+        dto.role === UserRole.TETENTWONER ? OwnerProfileType.PRIMARY_OWNER : null,
+      canManageOwnerTeam: dto.role === UserRole.TETENTWONER,
       subscriptionTier: dto.role === UserRole.TETENTWONER ? OwnerSubscriptionTier.STARTER : null,
       subscriptionRequired: dto.role === UserRole.TETENTWONER,
       subscriptionActive: false,
@@ -481,6 +494,12 @@ export class UserService {
     const existingUser = await this.userModel.findOne({ email });
 
     if (existingUser) {
+      if (targetRole === UserRole.TETENTWONER) {
+        throw new BadRequestException(
+          'Delegated owner email already exists. Use new account email.',
+        );
+      }
+
       return this.linkExistingGlobalUser(actor, {
         userId: String(existingUser._id),
         propertyIds: createUserDto.propertyIds,
@@ -494,6 +513,14 @@ export class UserService {
     const isGlobalProfile = this.isGlobalRole(targetRole);
     const ownerIds = ownerId ? [ownerId] : [];
     const propertyIds = this.normalizePropertyIds(targetRole, createUserDto.propertyIds);
+    const ownerProfileType =
+      targetRole === UserRole.TETENTWONER
+        ? createUserDto.ownerProfileType ?? OwnerProfileType.MANAGER
+        : null;
+    const canManageOwnerTeam =
+      targetRole === UserRole.TETENTWONER
+        ? ownerProfileType === OwnerProfileType.PRIMARY_OWNER
+        : false;
 
     const user = await this.userModel.create({
       ...createUserDto,
@@ -510,6 +537,8 @@ export class UserService {
       propertyIds,
       activePropertyId: propertyIds[0] ?? null,
       isGlobalProfile,
+      ownerProfileType,
+      canManageOwnerTeam,
       subscriptionTier:
         targetRole === UserRole.TETENTWONER ? OwnerSubscriptionTier.STARTER : null,
       subscriptionRequired: targetRole === UserRole.TETENTWONER,
@@ -607,7 +636,13 @@ export class UserService {
 
     if (actor.role === UserRole.TETENTWONER) {
       filter = {
-        $or: [{ _id: actor.id }, { ownerIds: actor.id }, { createdByUserId: actor.id }],
+        $or: [
+          { _id: actor.id },
+          { organizationId: actor.organizationId ?? null },
+          { organizationIds: actor.organizationId ?? null },
+          { ownerIds: actor.id },
+          { createdByUserId: actor.id },
+        ],
       };
     }
 
@@ -669,12 +704,24 @@ export class UserService {
     user: AuthPayloadUser,
     storeRefreshToken: boolean,
   ): Promise<AuthResponse> {
+    const normalizedOwnerProfileType =
+      user.role === UserRole.TETENTWONER
+        ? user.ownerProfileType ?? OwnerProfileType.PRIMARY_OWNER
+        : null;
+    const normalizedCanManageOwnerTeam =
+      user.role === UserRole.TETENTWONER
+        ? user.canManageOwnerTeam ?? normalizedOwnerProfileType === OwnerProfileType.PRIMARY_OWNER
+        : false;
+
     const payload = {
       id: String(user._id),
       email: user.email,
+      fullName: user.fullName,
       role: user.role,
       organizationId: user.organizationId ?? null,
       status: user.status,
+      ownerProfileType: normalizedOwnerProfileType,
+      canManageOwnerTeam: normalizedCanManageOwnerTeam,
     };
 
     const access_token = this.jwtService.sign(payload);
@@ -713,6 +760,8 @@ export class UserService {
         propertyIds: user.propertyIds ?? [],
         activePropertyId: user.activePropertyId ?? null,
         isGlobalProfile: user.isGlobalProfile ?? false,
+        ownerProfileType: normalizedOwnerProfileType,
+        canManageOwnerTeam: normalizedCanManageOwnerTeam,
         subscriptionTier: user.subscriptionTier ?? null,
         subscriptionRequired: user.subscriptionRequired ?? false,
         subscriptionActive: user.subscriptionActive ?? false,
@@ -726,6 +775,15 @@ export class UserService {
   }
 
   private mapUser(user: UserRecord): UserResponse {
+    const normalizedOwnerProfileType =
+      user.role === UserRole.TETENTWONER
+        ? user.ownerProfileType ?? OwnerProfileType.PRIMARY_OWNER
+        : null;
+    const normalizedCanManageOwnerTeam =
+      user.role === UserRole.TETENTWONER
+        ? user.canManageOwnerTeam ?? normalizedOwnerProfileType === OwnerProfileType.PRIMARY_OWNER
+        : false;
+
     return {
       id: String(user._id),
       fullName: user.fullName,
@@ -743,6 +801,8 @@ export class UserService {
       propertyIds: user.propertyIds ?? [],
       activePropertyId: user.activePropertyId ?? null,
       isGlobalProfile: user.isGlobalProfile ?? false,
+      ownerProfileType: normalizedOwnerProfileType,
+      canManageOwnerTeam: normalizedCanManageOwnerTeam,
       subscriptionTier: user.subscriptionTier ?? null,
       subscriptionRequired: user.subscriptionRequired ?? false,
       subscriptionActive: user.subscriptionActive ?? false,
@@ -768,9 +828,16 @@ export class UserService {
     }
 
     if (actor.role === UserRole.TETENTWONER) {
+      const actorCanManageOwnerTeam =
+        actor.canManageOwnerTeam ?? actor.ownerProfileType !== OwnerProfileType.MANAGER && actor.ownerProfileType !== OwnerProfileType.CO_OWNER;
+
+      if (targetRole === UserRole.TETENTWONER && actorCanManageOwnerTeam) {
+        return;
+      }
+
       if (![UserRole.WORKER, UserRole.RENTER, UserRole.GUEST].includes(targetRole)) {
         throw new BadRequestException(
-          'Tenant owner can add only worker, renter, or guest.',
+          'Tenant owner can add only worker, renter, guest, or delegated owner team members.',
         );
       }
 
@@ -789,7 +856,7 @@ export class UserService {
       return requestedOrganizationId ?? actor.organizationId ?? null;
     }
 
-    if (actor.role === UserRole.TETENTWONER && this.isGlobalRole(targetRole)) {
+    if (actor.role === UserRole.TETENTWONER) {
       return actor.organizationId ?? null;
     }
 

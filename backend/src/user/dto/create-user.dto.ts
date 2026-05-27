@@ -8,7 +8,7 @@ import {
   IsString,
   MinLength,
 } from 'class-validator';
-import { UserRole } from '../entities/user.entity';
+import { OwnerProfileType, UserRole } from '../entities/user.entity';
 
 export class CreateUserDto {
   @ApiProperty({ example: 'John Doe' })
@@ -58,4 +58,12 @@ export class CreateUserDto {
   @IsOptional()
   @IsEnum(UserRole)
   role?: UserRole;
+
+  @ApiPropertyOptional({
+    enum: OwnerProfileType,
+    example: OwnerProfileType.MANAGER,
+  })
+  @IsOptional()
+  @IsEnum(OwnerProfileType)
+  ownerProfileType?: OwnerProfileType;
 }

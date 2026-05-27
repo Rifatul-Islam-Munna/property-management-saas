@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
+import type { JwtUser } from 'src/lib/auth.guard';
 import { CreateVendorDto } from './dto/create-vendor.dto';
 import { QueryVendorDto } from './dto/query-vendor.dto';
 import { UpdateVendorDto } from './dto/update-vendor.dto';
@@ -13,8 +14,14 @@ export class VendorService {
     private readonly vendorModel: Model<VendorDocument>,
   ) {}
 
-  async create(organizationId: string, dto: CreateVendorDto) {
-    const vendor = await this.vendorModel.create({ ...dto, organizationId });
+  async create(organizationId: string, actor: JwtUser, dto: CreateVendorDto) {
+    const vendor = await this.vendorModel.create({
+      ...dto,
+      organizationId,
+      updatedByUserId: actor.id,
+      updatedByName: actor.fullName,
+      updatedByRole: actor.role,
+    });
     return vendor.toObject();
   }
 
@@ -50,10 +57,15 @@ export class VendorService {
     return vendor;
   }
 
-  async update(organizationId: string, id: string, dto: UpdateVendorDto) {
+  async update(organizationId: string, actor: JwtUser, id: string, dto: UpdateVendorDto) {
     const vendor = await this.vendorModel.findOneAndUpdate(
       { _id: id, organizationId },
-      dto,
+      {
+        ...dto,
+        updatedByUserId: actor.id,
+        updatedByName: actor.fullName,
+        updatedByRole: actor.role,
+      },
       { new: true },
     );
     if (!vendor) throw new NotFoundException('Vendor not found');

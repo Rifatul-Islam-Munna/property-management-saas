@@ -1,3 +1,4 @@
+import type { JwtUser } from 'src/lib/auth.guard';
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
@@ -15,13 +16,16 @@ export class PropertyService {
 
   async create(
     organizationId: string,
-    userId: string,
+    actor: JwtUser,
     dto: CreatePropertyDto,
   ): Promise<any> {
     const property = await this.propertyModel.create({
       ...dto,
       organizationId,
-      createdBy: userId,
+      createdBy: actor.id,
+      updatedByUserId: actor.id,
+      updatedByName: actor.fullName,
+      updatedByRole: actor.role,
     });
     return property.toObject();
   }
@@ -75,11 +79,21 @@ export class PropertyService {
 
   async update(
     organizationId: string,
+    actor: JwtUser,
     id: string,
     dto: UpdatePropertyDto,
   ): Promise<any> {
     const property = await this.propertyModel
-      .findOneAndUpdate({ _id: id, organizationId }, dto, { new: true })
+      .findOneAndUpdate(
+        { _id: id, organizationId },
+        {
+          ...dto,
+          updatedByUserId: actor.id,
+          updatedByName: actor.fullName,
+          updatedByRole: actor.role,
+        },
+        { new: true },
+      )
       .lean();
 
     if (!property) {

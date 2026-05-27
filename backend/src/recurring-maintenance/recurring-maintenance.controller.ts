@@ -50,7 +50,7 @@ export class RecurringMaintenanceController {
     @Param('id', MongoIdPipe) id: string,
     @Body() dto: UpdateRecurringMaintenanceDto,
   ): Promise<SuccessResponseDto<any>> {
-    const data = await this.recurringService.update(req.user.organizationId ?? '', id, dto);
+    const data = await this.recurringService.update(req.user.organizationId ?? '', req.user, id, dto);
     return new SuccessResponseDto(200, 'Recurring maintenance updated successfully', data);
   }
 

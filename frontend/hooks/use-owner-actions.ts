@@ -29,7 +29,8 @@ type OwnerManagedUserPayload = {
   password: string
   jobTitle?: string
   propertyIds?: string[]
-  role: "worker" | "renter" | "guest"
+  role: "tetentwoner" | "worker" | "renter" | "guest"
+  ownerProfileType?: "primary_owner" | "co_owner" | "manager"
 }
 
 type OwnerAssignmentRequestPayload = {

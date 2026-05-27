@@ -31,7 +31,7 @@ export class UnitController {
     @Req() req: ExpressRequest,
     @Body() dto: CreateUnitDto,
   ): Promise<SuccessResponseDto<any>> {
-    const data = await this.unitService.create(req.user.organizationId ?? '', dto);
+    const data = await this.unitService.create(req.user.organizationId ?? '', req.user, dto);
     return new SuccessResponseDto(201, 'Unit created successfully', data);
   }
 
@@ -59,7 +59,7 @@ export class UnitController {
     @Param('id') id: string,
     @Body() dto: UpdateUnitDto,
   ): Promise<SuccessResponseDto<any>> {
-    const data = await this.unitService.update(req.user.organizationId ?? '', id, dto);
+    const data = await this.unitService.update(req.user.organizationId ?? '', req.user, id, dto);
     return new SuccessResponseDto(200, 'Unit updated', data);
   }
 

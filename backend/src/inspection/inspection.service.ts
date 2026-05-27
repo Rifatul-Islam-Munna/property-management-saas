@@ -27,6 +27,9 @@ export class InspectionService {
       ...dto,
       organizationId,
       createdBy: actor.id,
+      updatedByUserId: actor.id,
+      updatedByName: actor.fullName,
+      updatedByRole: actor.role,
     });
     return this.enrichInspection(inspection.toObject());
   }
@@ -63,7 +66,7 @@ export class InspectionService {
     return this.enrichInspection(inspection);
   }
 
-  async update(organizationId: string, id: string, dto: UpdateInspectionDto): Promise<any> {
+  async update(organizationId: string, actor: JwtUser, id: string, dto: UpdateInspectionDto): Promise<any> {
     const updatePayload: Record<string, unknown> = { ...dto };
     if (dto.completed) {
       updatePayload.completedAt = new Date();
@@ -73,7 +76,12 @@ export class InspectionService {
     }
     const inspection = await this.inspectionModel.findOneAndUpdate(
       { _id: id, organizationId },
-      updatePayload,
+      {
+        ...updatePayload,
+        updatedByUserId: actor.id,
+        updatedByName: actor.fullName,
+        updatedByRole: actor.role,
+      },
       { new: true },
     );
     if (!inspection) throw new NotFoundException('Inspection not found');
@@ -115,6 +123,9 @@ export class InspectionService {
     }
     inspection.workerReportedAt = new Date();
     inspection.workerReportedBy = actor.id;
+    inspection.updatedByUserId = actor.id;
+    inspection.updatedByName = actor.fullName;
+    inspection.updatedByRole = actor.role;
 
     if (dto.completed !== undefined) {
       inspection.completed = dto.completed;

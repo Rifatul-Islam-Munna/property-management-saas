@@ -22,7 +22,7 @@ export class FinanceEntryController {
   @Post()
   @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.TETENTWONER)
   async create(@Req() req: ExpressRequest, @Body() dto: CreateFinanceEntryDto): Promise<SuccessResponseDto> {
-    const data = await this.financeEntryService.create(req.user.organizationId ?? '', req.user.id, dto);
+    const data = await this.financeEntryService.create(req.user.organizationId ?? '', req.user, dto);
     return new SuccessResponseDto(201, 'Finance entry created successfully', data);
   }
 
@@ -43,7 +43,7 @@ export class FinanceEntryController {
   @Patch(':id')
   @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.TETENTWONER)
   async update(@Req() req: ExpressRequest, @Param('id', MongoIdPipe) id: string, @Body() dto: UpdateFinanceEntryDto): Promise<SuccessResponseDto> {
-    const data = await this.financeEntryService.update(req.user.organizationId ?? '', id, dto);
+    const data = await this.financeEntryService.update(req.user.organizationId ?? '', req.user, id, dto);
     return new SuccessResponseDto(200, 'Finance entry updated successfully', data);
   }
 

@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
+import type { JwtUser } from 'src/lib/auth.guard';
 import { Bill, BillDocument, BillStatus } from 'src/bill/entities/bill.entity';
 import { Property, PropertyDocument } from 'src/property/entities/property.entity';
 import { Unit, UnitDocument } from 'src/unit/entities/unit.entity';
@@ -42,6 +43,7 @@ export class TenantService {
   async create(
     organizationId: string,
     ownerUserId: string,
+    actor: JwtUser,
     dto: CreateTenantDto,
   ): Promise<any> {
     const unit = dto.unitId
@@ -66,6 +68,9 @@ export class TenantService {
       organizationId,
       tenantKind: dto.tenantKind ?? TenantKind.RENTER,
       paymentRecords: [],
+      updatedByUserId: actor.id,
+      updatedByName: actor.fullName,
+      updatedByRole: actor.role,
     });
 
     if (linkedUserIsValid) {
@@ -261,6 +266,7 @@ export class TenantService {
   async update(
     organizationId: string,
     ownerUserId: string,
+    actor: JwtUser,
     id: string,
     dto: UpdateTenantDto,
   ): Promise<any> {
@@ -279,7 +285,12 @@ export class TenantService {
 
     const tenant = await this.tenantModel.findOneAndUpdate(
       { _id: id, organizationId },
-      updatePayload,
+      {
+        ...updatePayload,
+        updatedByUserId: actor.id,
+        updatedByName: actor.fullName,
+        updatedByRole: actor.role,
+      },
       { new: true },
     );
 
@@ -402,6 +413,7 @@ export class TenantService {
 
   async recordPayment(
     organizationId: string,
+    actor: JwtUser,
     id: string,
     dto: RecordTenantPaymentDto,
   ): Promise<any> {
@@ -434,6 +446,10 @@ export class TenantService {
     if (tenant.tenantKind === TenantKind.GUEST) {
       tenant.guestFeePaid = true;
     }
+
+    tenant.updatedByUserId = actor.id;
+    tenant.updatedByName = actor.fullName;
+    tenant.updatedByRole = actor.role;
 
     await tenant.save();
     return tenant.toObject();

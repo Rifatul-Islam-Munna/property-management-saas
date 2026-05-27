@@ -1,6 +1,7 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument } from 'mongoose';
 import { TicketPriority } from 'src/ticket/entities/ticket.entity';
+import { UserRole } from 'src/user/entities/user.entity';
 
 export enum WorkOrderStatus {
   OPEN = 'open',
@@ -70,6 +71,15 @@ export class WorkOrder {
 
   @Prop({ type: String, required: true })
   createdBy: string;
+
+  @Prop({ type: String, default: null })
+  updatedByUserId?: string | null;
+
+  @Prop({ type: String, trim: true, default: null })
+  updatedByName?: string | null;
+
+  @Prop({ type: String, enum: UserRole, default: null })
+  updatedByRole?: UserRole | null;
 }
 
 export const WorkOrderSchema = SchemaFactory.createForClass(WorkOrder);
