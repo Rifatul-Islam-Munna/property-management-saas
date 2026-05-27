@@ -31,6 +31,7 @@ import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui
 import { Input } from "@/components/ui/input"
 import { UploadCollectionField } from "@/components/shared/upload-collection-field"
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import {
   Sheet,
   SheetContent,
@@ -51,6 +52,7 @@ import { useOrganizationStripeSettingsQuery } from "@/hooks/use-organization-set
 import type { AuthUser } from "@/lib/types/auth"
 import {
   useOwnerAssignTicketMutation,
+  useOwnerAddTicketNoteMutation,
   useOwnerCreateInspectionMutation,
   useOwnerCreatePropertyMutation,
   useOwnerCreateRecurringMaintenanceMutation,
@@ -73,6 +75,8 @@ import {
   useOwnerToggleTenantMutation,
   useOwnerToggleUnitMutation,
   useOwnerUpdateBillMutation,
+  useOwnerUpdateInspectionMutation,
+  useOwnerUpdateRecurringMaintenanceMutation,
   useOwnerUpdateTenantMutation,
   useOwnerUpdateTicketMutation,
 } from "@/hooks/use-owner-actions"
@@ -94,7 +98,7 @@ import {
   useOwnerWorkOrdersQuery,
 } from "@/hooks/use-owner-dashboard"
 import type { ApiSuccessResponse } from "@/lib/types/api"
-import type { FinanceEntryItem, PropertyItem, TenantItem, UnitItem } from "@/lib/types/dashboard"
+import type { FinanceEntryItem, PropertyItem, TenantItem, TicketItem, UnitItem } from "@/lib/types/dashboard"
 import { toast } from "sonner"
 
 function splitCsv(value?: string) {
@@ -168,6 +172,40 @@ function toDateInputValue(value?: string | Date | null) {
   const parsed = new Date(value)
   if (Number.isNaN(parsed.getTime())) return ""
   return parsed.toISOString().slice(0, 10)
+}
+
+function paginateItems<T>(items: T[], page: number, pageSize: number) {
+  const start = (page - 1) * pageSize
+  return items.slice(start, start + pageSize)
+}
+
+function PaginationControls({
+  page,
+  total,
+  pageSize,
+  onPageChange,
+}: {
+  page: number
+  total: number
+  pageSize: number
+  onPageChange: (page: number) => void
+}) {
+  const totalPages = Math.max(1, Math.ceil(total / pageSize))
+  if (total <= pageSize) return null
+
+  return (
+    <div className="flex items-center justify-between gap-3 border-t pt-4 text-sm text-slate-600">
+      <p>Page {page} / {totalPages}</p>
+      <div className="flex items-center gap-2">
+        <Button type="button" size="sm" variant="outline" disabled={page <= 1} onClick={() => onPageChange(page - 1)}>
+          Prev
+        </Button>
+        <Button type="button" size="sm" variant="outline" disabled={page >= totalPages} onClick={() => onPageChange(page + 1)}>
+          Next
+        </Button>
+      </div>
+    </div>
+  )
 }
 
 function buildMonthDueDate(monthKey: string, dueDay?: number | null) {
@@ -2360,11 +2398,24 @@ export function TenantOwnerTechniciansPage() {
   const users = useOwnerUsersQuery()
   const technicians = useOwnerTechniciansQuery()
   const createTechnician = useOwnerCreateTechnicianMutation()
+  const createRequest = useOwnerCreateAssignmentRequestMutation()
   const toggleTechnician = useOwnerToggleTechnicianMutation()
   const deleteTechnician = useOwnerDeleteTechnicianMutation()
   const propertyList = Array.isArray(properties.data) ? properties.data : []
   const technicianList = Array.isArray(technicians.data) ? technicians.data : []
   const workerUsers = Array.isArray(users.data) ? users.data.filter((user) => user.role === "worker") : []
+  const [publicWorkerSearch, setPublicWorkerSearch] = useState("")
+  const [linkedWorkerSearch, setLinkedWorkerSearch] = useState("")
+  const [requestMessage, setRequestMessage] = useState("")
+  const [selectedPublicWorkerId, setSelectedPublicWorkerId] = useState("")
+  const publicWorkerResults = useOwnerUserSearchQuery(publicWorkerSearch, "worker")
+  const linkedWorkerResults = useMemo(() => {
+    const needle = linkedWorkerSearch.trim().toLowerCase()
+    if (!needle) return workerUsers
+    return workerUsers.filter((user) =>
+      [user.fullName, user.email, user.phoneNumber].filter(Boolean).join(" ").toLowerCase().includes(needle)
+    )
+  }, [linkedWorkerSearch, workerUsers])
   const [isCreateOpen, setIsCreateOpen] = useState(false)
   const [assignedProperties, setAssignedProperties] = useState<string[]>([])
   const [form, setForm] = useState({
@@ -2375,6 +2426,13 @@ export function TenantOwnerTechniciansPage() {
     skills: "",
     availability: "available",
   })
+  const selectedPublicWorker =
+    publicWorkerResults.data?.find((candidate) => candidate.id === selectedPublicWorkerId) ?? null
+  const requestDisabledReason = !selectedPublicWorker
+    ? "Select worker first."
+    : assignedProperties.length === 0
+      ? "Select at least one property first."
+      : ""
 
   return (
     <div className="space-y-6">
@@ -2388,8 +2446,8 @@ export function TenantOwnerTechniciansPage() {
         <CreateSheet
           open={isCreateOpen}
           onOpenChange={setIsCreateOpen}
-          title="Add or link technician"
-          description="Link existing worker or create new global technician profile."
+          title="Request or link technician"
+          description="Search worker by email, send join request, then link accepted worker into technician profile."
           triggerLabel="Add technician"
         >
             <form
@@ -2416,6 +2474,10 @@ export function TenantOwnerTechniciansPage() {
                         skills: "",
                         availability: "available",
                       })
+                      setSelectedPublicWorkerId("")
+                      setPublicWorkerSearch("")
+                      setLinkedWorkerSearch("")
+                      setRequestMessage("")
                       setAssignedProperties([])
                       setIsCreateOpen(false)
                     },
@@ -2423,21 +2485,174 @@ export function TenantOwnerTechniciansPage() {
                 )
               }}
             >
+              <div className="rounded-2xl border border-dashed p-4">
+                <div className="space-y-3">
+                  <div>
+                    <p className="text-sm font-medium text-slate-950">Request worker access first</p>
+                    <p className="mt-1 text-sm text-slate-600">
+                      Search signed-up worker by email or name. Worker must accept before they appear in linked worker search below.
+                    </p>
+                  </div>
+                  <FieldGroup>
+                    <Field>
+                      <FieldLabel>Search worker by email or name</FieldLabel>
+                      <Input
+                        value={publicWorkerSearch}
+                        onChange={(event) => setPublicWorkerSearch(event.target.value ?? "")}
+                        placeholder="worker@example.com"
+                      />
+                    </Field>
+                    <PropertyMultiSelect
+                      properties={propertyList}
+                      selectedIds={assignedProperties}
+                      setSelectedIds={setAssignedProperties}
+                      helper="Worker request should include apartment properties they will serve."
+                    />
+                    <Field>
+                      <FieldLabel>Request message (Optional)</FieldLabel>
+                      <Textarea
+                        value={requestMessage}
+                        onChange={(event) => setRequestMessage(event.target.value ?? "")}
+                        placeholder="Join my apartment team as worker..."
+                      />
+                    </Field>
+                  </FieldGroup>
+                  <div className="space-y-3">
+                    {publicWorkerResults.data?.length ? publicWorkerResults.data.map((candidate) => (
+                      <button
+                        key={candidate.id}
+                        type="button"
+                        className={`w-full rounded-xl border p-4 text-left transition ${
+                          selectedPublicWorkerId === candidate.id
+                            ? "border-blue-300 bg-blue-50"
+                            : "border-slate-200 bg-white"
+                        }`}
+                        onClick={() => {
+                          setSelectedPublicWorkerId(candidate.id)
+                          setForm((current) => ({
+                            ...current,
+                            name: candidate.fullName,
+                            email: candidate.email,
+                            phone: candidate.phoneNumber ?? "",
+                          }))
+                        }}
+                      >
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <div>
+                            <p className="font-medium text-slate-950">{candidate.fullName}</p>
+                            <p className="text-sm text-slate-600">{candidate.email}</p>
+                            <p className="text-xs text-slate-500">{candidate.phoneNumber || "No phone saved"}</p>
+                          </div>
+                          <Badge variant={selectedPublicWorkerId === candidate.id ? "default" : "outline"}>
+                            {selectedPublicWorkerId === candidate.id ? "Selected" : "Tap to select"}
+                          </Badge>
+                        </div>
+                      </button>
+                    )) : publicWorkerSearch.trim().length >= 2 && !publicWorkerResults.isLoading ? (
+                      <div className="rounded-xl border border-dashed p-4 text-sm text-slate-500">
+                        No signed-up worker found. Ask them to sign up first.
+                      </div>
+                    ) : (
+                      <div className="rounded-xl border border-dashed p-4 text-sm text-slate-500">
+                        Search public worker account first.
+                      </div>
+                    )}
+                  </div>
+                  <div className="rounded-xl bg-slate-50 p-4 text-sm text-slate-700">
+                    <p className="font-medium text-slate-950">
+                      {selectedPublicWorker ? `Selected: ${selectedPublicWorker.fullName}` : "No worker selected yet"}
+                    </p>
+                    <p className="mt-1">
+                      {selectedPublicWorker
+                        ? `${selectedPublicWorker.email}${selectedPublicWorker.phoneNumber ? ` | ${selectedPublicWorker.phoneNumber}` : ""}`
+                        : "Pick worker from search results above."}
+                    </p>
+                    <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
+                      <Button
+                        type="button"
+                        disabled={createRequest.isPending || Boolean(requestDisabledReason)}
+                        onClick={() => {
+                          if (!selectedPublicWorker) return
+                          createRequest.mutate(
+                            {
+                              direction: "owner_to_user",
+                              targetUserId: selectedPublicWorker.id,
+                              targetEmail: selectedPublicWorker.email,
+                              requestedRole: "worker",
+                              propertyIds: assignedProperties,
+                              message: requestMessage || undefined,
+                            },
+                            {
+                              onSuccess: () => {
+                                setSelectedPublicWorkerId("")
+                                setPublicWorkerSearch("")
+                                setRequestMessage("")
+                              },
+                            }
+                          )
+                        }}
+                      >
+                        Send worker request
+                      </Button>
+                      {requestDisabledReason ? (
+                        <span className="text-xs text-amber-700">{requestDisabledReason}</span>
+                      ) : (
+                        <span className="text-xs text-emerald-700">Ready to send request.</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               <FieldGroup>
-                <Field><FieldLabel>Linked worker user</FieldLabel><Select value={form.userId} onValueChange={(value) => setForm((current) => ({ ...current, userId: value ?? "" }))}><SelectTrigger className="w-full"><SelectValue placeholder="Optional worker account" /></SelectTrigger><SelectContent><SelectGroup>{workerUsers.map((user) => <SelectItem key={user.id} value={user.id}>{user.fullName}</SelectItem>)}</SelectGroup></SelectContent></Select></Field>
+                <Field className="space-y-3">
+                  <FieldLabel>Linked worker user</FieldLabel>
+                  <Input
+                    value={linkedWorkerSearch}
+                    onChange={(event) => setLinkedWorkerSearch(event.target.value ?? "")}
+                    placeholder="Search accepted worker by email or name"
+                  />
+                  <FieldDescription>
+                    Only workers who already accepted your request show here.
+                  </FieldDescription>
+                  <div className="max-h-56 space-y-2 overflow-y-auto rounded-xl border p-2">
+                    {linkedWorkerResults.length ? linkedWorkerResults.map((user) => {
+                      const selected = form.userId === user.id
+                      return (
+                        <button
+                          key={user.id}
+                          type="button"
+                          className={`w-full rounded-xl border px-3 py-3 text-left transition ${
+                            selected ? "border-blue-300 bg-blue-50" : "border-slate-200 bg-white"
+                          }`}
+                          onClick={() =>
+                            setForm((current) => ({
+                              ...current,
+                              userId: user.id,
+                              name: user.fullName,
+                              email: user.email,
+                              phone: user.phoneNumber,
+                            }))
+                          }
+                        >
+                          <p className="font-medium text-slate-950">{user.fullName}</p>
+                          <p className="text-sm text-slate-600">{user.email}</p>
+                        </button>
+                      )
+                    }) : (
+                      <div className="rounded-xl border border-dashed p-4 text-sm text-slate-500">
+                        No accepted linked worker found yet.
+                      </div>
+                    )}
+                  </div>
+                </Field>
                 <Field><FieldLabel>Name</FieldLabel><Input value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value ?? "" }))} /></Field>
                 <Field><FieldLabel>Email</FieldLabel><Input type="email" value={form.email} onChange={(event) => setForm((current) => ({ ...current, email: event.target.value ?? "" }))} /></Field>
                 <Field><FieldLabel>Phone</FieldLabel><Input value={form.phone} onChange={(event) => setForm((current) => ({ ...current, phone: event.target.value ?? "" }))} /></Field>
                 <Field><FieldLabel>Skills</FieldLabel><Input value={form.skills} onChange={(event) => setForm((current) => ({ ...current, skills: event.target.value ?? "" }))} /><FieldDescription>Comma separated. Example: plumbing,electrical</FieldDescription></Field>
                 <Field><FieldLabel>Availability</FieldLabel><Select value={form.availability} onValueChange={(value) => setForm((current) => ({ ...current, availability: value ?? "available" }))}><SelectTrigger className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectGroup>{["available", "busy", "on_leave", "off_duty"].map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}</SelectGroup></SelectContent></Select></Field>
-                <PropertyMultiSelect
-                  properties={propertyList}
-                  selectedIds={assignedProperties}
-                  setSelectedIds={setAssignedProperties}
-                  helper="Technician can sit on many properties. Backend already keeps global technician links."
-                />
               </FieldGroup>
-              <Button type="submit" disabled={createTechnician.isPending}>Save technician</Button>
+              <Button type="submit" disabled={createTechnician.isPending || assignedProperties.length === 0}>Save technician</Button>
             </form>
         </CreateSheet>
       </div>
@@ -2784,7 +2999,7 @@ export function TenantOwnerVendorsPage() {
           open={isCreateOpen}
           onOpenChange={setIsCreateOpen}
           title="Add vendor"
-          description="Save vendor contact for later work order or service use."
+          description="Save vendor contact for later ticket or service use."
           triggerLabel="Add vendor"
         >
           <form
@@ -2842,7 +3057,7 @@ export function TenantOwnerVendorsPage() {
         <Card className="shadow-none">
           <CardHeader>
             <CardTitle>Vendor list</CardTitle>
-            <CardDescription>Keep service vendors ready for tickets and work orders.</CardDescription>
+            <CardDescription>Keep service vendors ready for ticket-based repair flow.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             {vendorList.length ? vendorList.map((vendor) => (
@@ -2878,16 +3093,37 @@ export function TenantOwnerTicketsPage() {
   const tickets = useOwnerTicketsQuery()
   const createTicket = useOwnerCreateTicketMutation()
   const assignTicket = useOwnerAssignTicketMutation()
+  const addTicketNote = useOwnerAddTicketNoteMutation()
   const updateTicket = useOwnerUpdateTicketMutation()
   const [isCreateOpen, setIsCreateOpen] = useState(false)
   const [ticketImages, setTicketImages] = useState<string[]>([])
-  const [dragTicketId, setDragTicketId] = useState("")
   const propertyList = Array.isArray(properties.data) ? properties.data : []
   const unitList = Array.isArray(units.data) ? units.data : []
   const tenantList = Array.isArray(tenants.data) ? tenants.data : []
   const userList = Array.isArray(users.data) ? users.data : []
   const ticketList = Array.isArray(tickets.data) ? tickets.data : []
   const workerList = userList.filter((user) => user.role === "worker")
+  const propertyMap = new Map(propertyList.map((item) => [item._id, item]))
+  const unitMap = new Map(unitList.map((item) => [item._id, item]))
+  const tenantMap = new Map(tenantList.map((item) => [item._id, item]))
+  const workerMap = new Map(workerList.map((item) => [item.id, item]))
+  const [search, setSearch] = useState("")
+  const [statusFilter, setStatusFilter] = useState("all")
+  const [assignedFilter, setAssignedFilter] = useState("all")
+  const [propertyFilter, setPropertyFilter] = useState("all")
+  const [tenantFilter, setTenantFilter] = useState("all")
+  const [workerFilter, setWorkerFilter] = useState("all")
+  const [page, setPage] = useState(1)
+  const pageSize = 8
+  const [isAssignSheetOpen, setIsAssignSheetOpen] = useState(false)
+  const [selectedTicketId, setSelectedTicketId] = useState("")
+  const [assignWorkerSearch, setAssignWorkerSearch] = useState("")
+  const [selectedAssignWorkerId, setSelectedAssignWorkerId] = useState("")
+  const [manageStatus, setManageStatus] = useState("open")
+  const [manageScheduledDate, setManageScheduledDate] = useState("")
+  const [manageDueDate, setManageDueDate] = useState("")
+  const [manageEstimatedCost, setManageEstimatedCost] = useState("")
+  const [manageOwnerNote, setManageOwnerNote] = useState("")
   const [form, setForm] = useState({
     propertyId: "",
     unitId: "",
@@ -2897,6 +3133,61 @@ export function TenantOwnerTicketsPage() {
     category: "general",
     priority: "medium",
   })
+  const filteredTickets = useMemo(() => {
+    return ticketList.filter((ticket) => {
+      if (statusFilter !== "all" && ticket.status !== statusFilter) return false
+      if (assignedFilter === "assigned" && !ticket.assignedTo) return false
+      if (assignedFilter === "unassigned" && ticket.assignedTo) return false
+      if (propertyFilter !== "all" && ticket.propertyId !== propertyFilter) return false
+      if (tenantFilter !== "all" && (ticket.tenantId ?? "") !== tenantFilter) return false
+      if (workerFilter !== "all" && (ticket.assignedTo ?? "") !== workerFilter) return false
+      if (!search.trim()) return true
+      const needle = search.trim().toLowerCase()
+      const propertyName = ticket.propertyId ? propertyMap.get(ticket.propertyId)?.name ?? "" : ""
+      const tenantName = ticket.tenantId ? tenantMap.get(ticket.tenantId)?.fullName ?? "" : ""
+      const workerName = ticket.assignedTo ? workerMap.get(ticket.assignedTo)?.fullName ?? "" : ""
+      return [
+        ticket.title,
+        ticket.description,
+        ticket.category,
+        ticket.priority,
+        ticket.status,
+        propertyName,
+        tenantName,
+        workerName,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase()
+        .includes(needle)
+    })
+  }, [assignedFilter, propertyFilter, propertyMap, search, statusFilter, tenantFilter, tenantMap, ticketList, workerFilter, workerMap])
+
+  useEffect(() => {
+    setPage(1)
+  }, [search, statusFilter, assignedFilter, propertyFilter, tenantFilter, workerFilter])
+
+  const pagedTickets = paginateItems(filteredTickets, page, pageSize)
+  const selectedTicket = ticketList.find((item) => item._id === selectedTicketId) ?? null
+  const assignWorkerResults = useMemo(() => {
+    const needle = assignWorkerSearch.trim().toLowerCase()
+    if (!needle) return workerList
+    return workerList.filter((worker) =>
+      [worker.fullName, worker.email, worker.phoneNumber].filter(Boolean).join(" ").toLowerCase().includes(needle)
+    )
+  }, [assignWorkerSearch, workerList])
+
+  useEffect(() => {
+    if (!selectedTicket) return
+    setSelectedAssignWorkerId(selectedTicket.assignedTo ?? "")
+    setManageStatus(selectedTicket.status ?? "open")
+    setManageScheduledDate(toDateInputValue(selectedTicket.scheduledDate))
+    setManageDueDate(toDateInputValue(selectedTicket.dueDate))
+    setManageEstimatedCost(
+      selectedTicket.estimatedCost != null ? String(selectedTicket.estimatedCost) : ""
+    )
+    setManageOwnerNote("")
+  }, [selectedTicket])
 
   return (
     <div className="space-y-6">
@@ -2904,7 +3195,7 @@ export function TenantOwnerTicketsPage() {
         icon={Ticket}
         badge="Support"
         title="Tickets"
-        body="Owner can create ticket, upload issue images, drag ticket onto own worker, then mark status done or in progress."
+        body="Table-first ticket control with filters, paging, worker assignment, and status actions. New ticket starts unassigned, then you assign worker from action column."
       />
       <div className="flex justify-end">
         <CreateSheet
@@ -2968,83 +3259,303 @@ export function TenantOwnerTicketsPage() {
         </CreateSheet>
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
-        <WithBone name="owner-page-tickets" loading={tickets.isLoading} fallback={<DashboardTableSkeleton />}>
-          <Card className="shadow-none">
-            <CardHeader>
-              <CardTitle>Ticket board</CardTitle>
-              <CardDescription>Drag ticket card onto your worker lane to assign.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {ticketList.length ? ticketList.map((ticket) => (
-                <div
-                  key={ticket._id}
-                  draggable
-                  onDragStart={() => setDragTicketId(ticket._id)}
-                  className="rounded-xl border p-4"
-                >
-                  <div className="flex flex-wrap items-center gap-2">
-                    <p className="font-medium text-slate-950">{ticket.title}</p>
-                    <Badge variant="outline">{ticket.status}</Badge>
-                    <Badge variant="secondary">{ticket.priority}</Badge>
-                  </div>
-                  <p className="mt-2 text-sm text-slate-600">{ticket.description}</p>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {["open","assigned","in_progress","completed"].map((status) => (
-                      <Button
-                        key={status}
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="shadow-none"
-                        onClick={() => updateTicket.mutate({ id: ticket._id, payload: { status } })}
-                      >
-                        {status}
-                      </Button>
-                    ))}
-                  </div>
-                </div>
-              )) : (
-                <Empty>
-                  <EmptyHeader>
-                    <EmptyMedia variant="icon"><Ticket /></EmptyMedia>
-                    <EmptyTitle>No tickets yet</EmptyTitle>
-                    <EmptyDescription>Create first ticket from top sheet.</EmptyDescription>
-                  </EmptyHeader>
-                </Empty>
-              )}
-            </CardContent>
-          </Card>
-        </WithBone>
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+        <div className="rounded-xl border bg-white p-4"><p className="text-xs uppercase tracking-wide text-slate-500">All</p><p className="mt-2 text-2xl font-semibold text-slate-950">{ticketList.length}</p></div>
+        <div className="rounded-xl border bg-white p-4"><p className="text-xs uppercase tracking-wide text-slate-500">Open</p><p className="mt-2 text-2xl font-semibold text-slate-950">{ticketList.filter((item) => item.status === "open").length}</p></div>
+        <div className="rounded-xl border bg-white p-4"><p className="text-xs uppercase tracking-wide text-slate-500">Assigned</p><p className="mt-2 text-2xl font-semibold text-slate-950">{ticketList.filter((item) => item.status === "assigned").length}</p></div>
+        <div className="rounded-xl border bg-white p-4"><p className="text-xs uppercase tracking-wide text-slate-500">In progress</p><p className="mt-2 text-2xl font-semibold text-slate-950">{ticketList.filter((item) => item.status === "in_progress").length}</p></div>
+        <div className="rounded-xl border bg-white p-4"><p className="text-xs uppercase tracking-wide text-slate-500">Completed</p><p className="mt-2 text-2xl font-semibold text-slate-950">{ticketList.filter((item) => item.status === "completed").length}</p></div>
+      </div>
 
+      <WithBone name="owner-page-tickets" loading={tickets.isLoading} fallback={<DashboardTableSkeleton />}>
         <Card className="shadow-none">
           <CardHeader>
-            <CardTitle>Assign my workers</CardTitle>
-            <CardDescription>Only owner-linked workers show here. No global worker dump.</CardDescription>
+            <CardTitle>Ticket table</CardTitle>
+            <CardDescription>Filter by status, assignment, tenant, property, worker. Update status and assign worker from actions.</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-3">
-            {workerList.length ? workerList.map((worker) => (
-              <div
-                key={worker.id}
-                onDragOver={(event) => event.preventDefault()}
-                onDrop={() => {
-                  if (!dragTicketId) return
-                  assignTicket.mutate({ ticketId: dragTicketId, assignedTo: worker.id })
-                  setDragTicketId("")
-                }}
-                className="rounded-xl border border-dashed p-4"
-              >
-                <p className="font-medium text-slate-950">{worker.fullName}</p>
-                <p className="text-sm text-slate-600">{worker.email}</p>
-              </div>
-            )) : (
-              <div className="rounded-xl border border-dashed p-4 text-sm text-slate-500">
-                No workers linked yet.
-              </div>
-            )}
+          <CardContent className="space-y-4">
+            <div className="grid gap-3 xl:grid-cols-6">
+              <Input value={search} onChange={(event) => setSearch(event.target.value ?? "")} placeholder="Search ticket, tenant, worker" />
+              <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+                <option value="all">All status</option>
+                {["open","assigned","in_progress","waiting_parts","completed","cancelled","escalated"].map((item) => <option key={item} value={item}>{item}</option>)}
+              </select>
+              <select value={assignedFilter} onChange={(event) => setAssignedFilter(event.target.value)} className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+                <option value="all">All assignment</option>
+                <option value="unassigned">Unassigned</option>
+                <option value="assigned">Assigned</option>
+              </select>
+              <select value={propertyFilter} onChange={(event) => setPropertyFilter(event.target.value)} className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+                <option value="all">All properties</option>
+                {propertyList.map((item) => <option key={item._id} value={item._id}>{item.name}</option>)}
+              </select>
+              <select value={tenantFilter} onChange={(event) => setTenantFilter(event.target.value)} className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+                <option value="all">All tenants</option>
+                {tenantList.map((item) => <option key={item._id} value={item._id}>{item.fullName}</option>)}
+              </select>
+              <select value={workerFilter} onChange={(event) => setWorkerFilter(event.target.value)} className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+                <option value="all">All workers</option>
+                {workerList.map((item) => <option key={item.id} value={item.id}>{item.fullName}</option>)}
+              </select>
+            </div>
+
+            <div className="overflow-hidden rounded-2xl border">
+              <Table>
+                <TableHeader className="bg-slate-50">
+                  <TableRow>
+                    <TableHead>Ticket</TableHead>
+                    <TableHead>Property / unit</TableHead>
+                    <TableHead>Tenant</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Worker</TableHead>
+                    <TableHead>Priority</TableHead>
+                    <TableHead>Action</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {pagedTickets.length ? pagedTickets.map((ticket: TicketItem) => {
+                    const property = ticket.propertyId ? propertyMap.get(ticket.propertyId) : null
+                    const unit = ticket.unitId ? unitMap.get(ticket.unitId) : null
+                    const tenant = ticket.tenantId ? tenantMap.get(ticket.tenantId) : null
+                    const assignedWorker = ticket.assignedTo ? workerMap.get(ticket.assignedTo) : null
+
+                    return (
+                      <TableRow key={ticket._id}>
+                        <TableCell className="min-w-56">
+                          <div>
+                            <p className="font-medium text-slate-950">{ticket.title}</p>
+                            <p className="mt-1 whitespace-normal text-xs text-slate-500">{ticket.description}</p>
+                            <div className="mt-2 flex flex-wrap gap-2">
+                              <Badge variant="outline">{ticket.category}</Badge>
+                              <Badge variant="secondary">{ticket.priority}</Badge>
+                            </div>
+                          </div>
+                        </TableCell>
+                        <TableCell className="min-w-40">
+                          <p className="font-medium text-slate-950">{property?.name ?? "No property"}</p>
+                          <p className="mt-1 text-xs text-slate-500">{unit?.unitNumber ?? "No unit"}</p>
+                        </TableCell>
+                        <TableCell className="min-w-40">
+                          <p className="font-medium text-slate-950">{tenant?.fullName ?? "No tenant"}</p>
+                          <p className="mt-1 text-xs text-slate-500">{tenant?.email ?? ""}</p>
+                        </TableCell>
+                        <TableCell>
+                          <Badge>{ticket.status}</Badge>
+                        </TableCell>
+                        <TableCell className="min-w-44">
+                          <p className="font-medium text-slate-950">{assignedWorker?.fullName ?? "Unassigned"}</p>
+                          <p className="mt-1 text-xs text-slate-500">{assignedWorker?.email ?? ""}</p>
+                        </TableCell>
+                        <TableCell>{ticket.priority}</TableCell>
+                        <TableCell className="min-w-56">
+                          <div className="grid gap-2">
+                            <Select
+                              value={ticket.status}
+                              onValueChange={(value) =>
+                                updateTicket.mutate({ id: ticket._id, payload: { status: value } })
+                              }
+                            >
+                              <SelectTrigger className="w-full">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectGroup>
+                                  {["open","assigned","in_progress","waiting_parts","completed","cancelled","escalated"].map((item) => (
+                                    <SelectItem key={item} value={item}>{item}</SelectItem>
+                                  ))}
+                                </SelectGroup>
+                              </SelectContent>
+                            </Select>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              className="w-full justify-start"
+                              onClick={() => {
+                                setSelectedTicketId(ticket._id)
+                                setSelectedAssignWorkerId(ticket.assignedTo ?? "")
+                                setAssignWorkerSearch("")
+                                setIsAssignSheetOpen(true)
+                              }}
+                            >
+                              {assignedWorker ? `Manage: ${assignedWorker.fullName}` : "Manage ticket"}
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    )
+                  }) : (
+                    <TableRow>
+                      <TableCell colSpan={7} className="py-8 text-center text-sm text-slate-500">
+                        No tickets match filter.
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+            <PaginationControls page={page} total={filteredTickets.length} pageSize={pageSize} onPageChange={setPage} />
           </CardContent>
         </Card>
-      </div>
+      </WithBone>
+
+      <Sheet open={isAssignSheetOpen} onOpenChange={setIsAssignSheetOpen}>
+        <SheetContent side="right" className="w-full overflow-y-auto sm:!w-[40rem] sm:!max-w-[40rem]">
+          <SheetHeader>
+            <SheetTitle>Manage ticket</SheetTitle>
+            <SheetDescription>
+              {selectedTicket ? `Schedule, estimate, and assign worker for "${selectedTicket.title}"` : "Manage ticket"}
+            </SheetDescription>
+          </SheetHeader>
+          <div className="space-y-4 px-4 pb-6">
+            {selectedTicket ? (
+              <div className="rounded-xl border bg-slate-50 p-4 text-sm">
+                <p className="font-medium text-slate-950">{selectedTicket.title}</p>
+                <p className="mt-1 text-slate-600">{selectedTicket.description}</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <Badge variant="outline">{selectedTicket.status}</Badge>
+                  <Badge variant="secondary">{selectedTicket.priority}</Badge>
+                  <Badge>{selectedTicket.category}</Badge>
+                </div>
+              </div>
+            ) : null}
+
+            <div className="grid gap-3 md:grid-cols-3">
+              <Field>
+                <FieldLabel>Status</FieldLabel>
+                <Select value={manageStatus} onValueChange={(value) => setManageStatus(value ?? "open")}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectGroup>
+                      {["open","assigned","in_progress","waiting_parts","completed","cancelled","escalated"].map((item) => (
+                        <SelectItem key={item} value={item}>{item}</SelectItem>
+                      ))}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+              </Field>
+              <Field>
+                <FieldLabel>Schedule date</FieldLabel>
+                <Input type="date" value={manageScheduledDate} onChange={(event) => setManageScheduledDate(event.target.value ?? "")} />
+              </Field>
+              <Field>
+                <FieldLabel>Due date</FieldLabel>
+                <Input type="date" value={manageDueDate} onChange={(event) => setManageDueDate(event.target.value ?? "")} />
+              </Field>
+              <Field>
+                <FieldLabel>Estimated cost</FieldLabel>
+                <Input type="number" value={manageEstimatedCost} onChange={(event) => setManageEstimatedCost(event.target.value ?? "")} />
+              </Field>
+            </div>
+
+            <Field>
+              <FieldLabel>Instruction for worker</FieldLabel>
+              <Textarea
+                value={manageOwnerNote}
+                onChange={(event) => setManageOwnerNote(event.target.value ?? "")}
+                placeholder="Access from back gate, call tenant first, bring ladder, check meter..."
+              />
+            </Field>
+
+            <Input
+              value={assignWorkerSearch}
+              onChange={(event) => setAssignWorkerSearch(event.target.value ?? "")}
+              placeholder="Search worker by name, email, phone"
+            />
+
+            <div className="max-h-[60vh] space-y-3 overflow-y-auto">
+              {assignWorkerResults.length ? assignWorkerResults.map((worker) => {
+                const selected = selectedAssignWorkerId === worker.id
+                return (
+                  <button
+                    key={worker.id}
+                    type="button"
+                    className={`w-full rounded-xl border p-4 text-left transition ${
+                      selected ? "border-blue-300 bg-blue-50" : "border-slate-200 bg-white"
+                    }`}
+                    onClick={() => setSelectedAssignWorkerId(worker.id)}
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="font-medium text-slate-950">{worker.fullName}</p>
+                        <p className="text-sm text-slate-600">{worker.email}</p>
+                        <p className="text-xs text-slate-500">{worker.phoneNumber}</p>
+                      </div>
+                      <Badge variant={selected ? "default" : "outline"}>
+                        {selected ? "Selected" : "Select"}
+                      </Badge>
+                    </div>
+                  </button>
+                )
+              }) : (
+                <div className="rounded-xl border border-dashed p-4 text-sm text-slate-500">
+                  No worker match search.
+                </div>
+              )}
+            </div>
+
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <Button
+                type="button"
+                disabled={!selectedTicketId || updateTicket.isPending || assignTicket.isPending}
+                onClick={async () => {
+                  updateTicket.mutate({
+                    id: selectedTicketId,
+                    payload: {
+                      status: manageStatus,
+                      scheduledDate: manageScheduledDate ? new Date(manageScheduledDate).toISOString() : undefined,
+                      dueDate: manageDueDate ? new Date(manageDueDate).toISOString() : undefined,
+                      estimatedCost: manageEstimatedCost ? Number(manageEstimatedCost) : undefined,
+                    },
+                  })
+
+                  if (manageOwnerNote.trim()) {
+                    addTicketNote.mutate({
+                      id: selectedTicketId,
+                      content: manageOwnerNote.trim(),
+                    })
+                  }
+
+                  if (selectedAssignWorkerId && selectedTicket?.assignedTo !== selectedAssignWorkerId) {
+                    assignTicket.mutate(
+                      { ticketId: selectedTicketId, assignedTo: selectedAssignWorkerId },
+                      {
+                        onSuccess: () => {
+                          setIsAssignSheetOpen(false)
+                          setSelectedTicketId("")
+                          setSelectedAssignWorkerId("")
+                          setAssignWorkerSearch("")
+                        },
+                      }
+                    )
+                    return
+                  }
+
+                  setIsAssignSheetOpen(false)
+                  setSelectedTicketId("")
+                  setSelectedAssignWorkerId("")
+                  setAssignWorkerSearch("")
+                }}
+              >
+                {assignTicket.isPending || updateTicket.isPending ? "Saving..." : "Save ticket flow"}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setIsAssignSheetOpen(false)
+                  setSelectedTicketId("")
+                  setSelectedAssignWorkerId("")
+                  setAssignWorkerSearch("")
+                }}
+              >
+                Cancel
+              </Button>
+            </div>
+          </div>
+        </SheetContent>
+      </Sheet>
     </div>
   )
 }
@@ -3152,12 +3663,13 @@ export function TenantOwnerRecurringPage() {
   const users = useOwnerUsersQuery()
   const recurring = useOwnerRecurringMaintenancesQuery()
   const createRecurring = useOwnerCreateRecurringMaintenanceMutation()
+  const updateRecurring = useOwnerUpdateRecurringMaintenanceMutation()
   const [isCreateOpen, setIsCreateOpen] = useState(false)
   const propertyList = Array.isArray(properties.data) ? properties.data : []
   const unitList = Array.isArray(units.data) ? units.data : []
   const workerList = Array.isArray(users.data) ? users.data.filter((user) => user.role === "worker") : []
   const recurringList = Array.isArray(recurring.data) ? recurring.data : []
-  const [form, setForm] = useState({ propertyId: "", unitId: "", title: "", description: "", frequency: "monthly", nextRunAt: "", assignedTo: "", isActive: true })
+  const [form, setForm] = useState({ propertyId: "", unitId: "", title: "", description: "", frequency: "monthly", nextRunAt: "", assignedTo: "", estimatedCost: "", actualCost: "", currency: "usd", isActive: true })
 
   return (
     <div className="space-y-6">
@@ -3166,8 +3678,8 @@ export function TenantOwnerRecurringPage() {
         <CreateSheet open={isCreateOpen} onOpenChange={setIsCreateOpen} title="Create recurring maintenance" description="Set frequency and next run date." triggerLabel="Add recurring">
           <form className="space-y-4" onSubmit={(event) => {
             event.preventDefault()
-              createRecurring.mutate({ ...form, unitId: form.unitId || undefined, assignedTo: form.assignedTo || undefined }, { onSuccess: () => {
-                setForm({ propertyId: "", unitId: "", title: "", description: "", frequency: "monthly", nextRunAt: "", assignedTo: "", isActive: true })
+              createRecurring.mutate({ ...form, unitId: form.unitId || undefined, assignedTo: form.assignedTo || undefined, estimatedCost: Number(form.estimatedCost || "0") || undefined, actualCost: Number(form.actualCost || "0") || undefined, currency: form.currency || undefined }, { onSuccess: () => {
+                setForm({ propertyId: "", unitId: "", title: "", description: "", frequency: "monthly", nextRunAt: "", assignedTo: "", estimatedCost: "", actualCost: "", currency: "usd", isActive: true })
                 setIsCreateOpen(false)
               }})
             }}>
@@ -3179,6 +3691,9 @@ export function TenantOwnerRecurringPage() {
                 <Field><FieldLabel>Frequency</FieldLabel><Select value={form.frequency} onValueChange={(value) => setForm((current) => ({ ...current, frequency: value ?? "monthly" }))}><SelectTrigger className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectGroup>{["weekly","monthly","quarterly","yearly"].map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}</SelectGroup></SelectContent></Select></Field>
                 <Field><FieldLabel>Next run date</FieldLabel><Input type="date" value={form.nextRunAt} onChange={(event) => setForm((current) => ({ ...current, nextRunAt: event.target.value ?? "" }))} /></Field>
                 <Field><FieldLabel>Assign worker (Optional)</FieldLabel><Select value={form.assignedTo} onValueChange={(value) => setForm((current) => ({ ...current, assignedTo: value ?? "" }))}><SelectTrigger className="w-full"><SelectValue placeholder="Select worker" /></SelectTrigger><SelectContent><SelectGroup>{workerList.map((user) => <SelectItem key={user.id} value={user.id}>{user.fullName}</SelectItem>)}</SelectGroup></SelectContent></Select></Field>
+                <Field><FieldLabel>Estimated cost (Optional)</FieldLabel><Input type="number" value={form.estimatedCost} onChange={(event) => setForm((current) => ({ ...current, estimatedCost: event.target.value ?? "" }))} /></Field>
+                <Field><FieldLabel>Actual cost (Optional)</FieldLabel><Input type="number" value={form.actualCost} onChange={(event) => setForm((current) => ({ ...current, actualCost: event.target.value ?? "" }))} /></Field>
+                <Field><FieldLabel>Currency</FieldLabel><Select value={form.currency} onValueChange={(value) => setForm((current) => ({ ...current, currency: value ?? "usd" }))}><SelectTrigger className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectGroup>{STRIPE_CURRENCY_OPTIONS.map((item) => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}</SelectGroup></SelectContent></Select></Field>
               </FieldGroup>
               <Button type="submit" disabled={createRecurring.isPending || !form.propertyId || !form.title || !form.nextRunAt}>Create recurring maintenance</Button>
             </form>
@@ -3188,7 +3703,7 @@ export function TenantOwnerRecurringPage() {
           <Card className="shadow-none"><CardHeader><CardTitle>Recurring plans</CardTitle><CardDescription>Assigned worker and latest run report show here.</CardDescription></CardHeader><CardContent className="space-y-3">{recurringList.length ? recurringList.map((item) => {
             const assignedWorker = workerList.find((user) => user.id === item.assignedTo)
             const latestRun = [...(item.runHistory ?? [])].sort((left, right) => new Date(right.reportedAt ?? "").getTime() - new Date(left.reportedAt ?? "").getTime())[0]
-            return <div key={item._id} className="rounded-xl border p-4"><div className="flex flex-wrap gap-2"><p className="font-medium text-slate-950">{item.title}</p><Badge variant="outline">{item.frequency}</Badge><Badge variant={item.assignedTo ? "default" : "secondary"}>{assignedWorker?.fullName ?? "Unassigned"}</Badge></div><p className="mt-2 text-sm text-slate-600">{item.description ?? "No description"}</p><div className="mt-3 grid gap-3 rounded-xl bg-slate-50 p-3 text-sm sm:grid-cols-3"><div><p className="text-xs uppercase tracking-wide text-slate-500">Next run</p><p className="font-medium text-slate-950">{item.nextRunAt ? new Date(item.nextRunAt).toLocaleDateString() : "No date"}</p></div><div><p className="text-xs uppercase tracking-wide text-slate-500">Latest status</p><p className="font-medium text-slate-950">{latestRun?.status ?? "No report"}</p></div><div><p className="text-xs uppercase tracking-wide text-slate-500">Reported at</p><p className="font-medium text-slate-950">{latestRun?.reportedAt ? new Date(latestRun.reportedAt).toLocaleDateString() : "No report yet"}</p></div></div><div className="mt-3 rounded-xl border bg-white p-3"><p className="text-xs uppercase tracking-wide text-slate-500">Latest worker note</p><p className="mt-1 text-sm text-slate-700">{latestRun?.note ?? "Worker has not submitted report yet."}</p></div></div>
+            return <div key={item._id} className="rounded-xl border p-4"><div className="flex flex-wrap gap-2"><p className="font-medium text-slate-950">{item.title}</p><Badge variant="outline">{item.frequency}</Badge><Badge variant={item.assignedTo ? "default" : "secondary"}>{assignedWorker?.fullName ?? "Unassigned"}</Badge><Badge variant={item.paymentStatus === "paid" ? "default" : "secondary"}>{item.paymentStatus ?? "unpaid"}</Badge></div><p className="mt-2 text-sm text-slate-600">{item.description ?? "No description"}</p><div className="mt-3 grid gap-3 rounded-xl bg-slate-50 p-3 text-sm sm:grid-cols-5"><div><p className="text-xs uppercase tracking-wide text-slate-500">Next run</p><p className="font-medium text-slate-950">{item.nextRunAt ? new Date(item.nextRunAt).toLocaleDateString() : "No date"}</p></div><div><p className="text-xs uppercase tracking-wide text-slate-500">Latest status</p><p className="font-medium text-slate-950">{latestRun?.status ?? "No report"}</p></div><div><p className="text-xs uppercase tracking-wide text-slate-500">Reported at</p><p className="font-medium text-slate-950">{latestRun?.reportedAt ? new Date(latestRun.reportedAt).toLocaleDateString() : "No report yet"}</p></div><div><p className="text-xs uppercase tracking-wide text-slate-500">Estimated</p><p className="font-medium text-slate-950">{formatMoney(item.estimatedCost ?? 0, (item.currency ?? "usd").toUpperCase())}</p></div><div><p className="text-xs uppercase tracking-wide text-slate-500">Actual</p><p className="font-medium text-slate-950">{formatMoney(item.actualCost ?? 0, (item.currency ?? "usd").toUpperCase())}</p></div></div><div className="mt-3 rounded-xl border bg-white p-3"><p className="text-xs uppercase tracking-wide text-slate-500">Latest worker note</p><p className="mt-1 text-sm text-slate-700">{latestRun?.note ?? "Worker has not submitted report yet."}</p></div>{latestRun?.status === "completed" ? <div className="mt-3 flex flex-wrap gap-2"><Button type="button" size="sm" variant={item.paymentStatus === "paid" ? "default" : "outline"} onClick={() => updateRecurring.mutate({ id: item._id, payload: { paymentStatus: "paid" } })}>Paid</Button><Button type="button" size="sm" variant={item.paymentStatus === "unpaid" ? "default" : "outline"} onClick={() => updateRecurring.mutate({ id: item._id, payload: { paymentStatus: "unpaid" } })}>Unpaid</Button></div> : null}</div>
           }) : <Empty><EmptyHeader><EmptyMedia variant="icon"><Repeat /></EmptyMedia><EmptyTitle>No recurring maintenance yet</EmptyTitle><EmptyDescription>Create first recurring maintenance from top sheet.</EmptyDescription></EmptyHeader></Empty>}</CardContent></Card>
         </WithBone>
       </div>
@@ -3201,6 +3716,7 @@ export function TenantOwnerInspectionsPage() {
   const users = useOwnerUsersQuery()
   const inspections = useOwnerInspectionsQuery()
   const createInspection = useOwnerCreateInspectionMutation()
+  const updateInspection = useOwnerUpdateInspectionMutation()
   const [isCreateOpen, setIsCreateOpen] = useState(false)
   const [photoUrls, setPhotoUrls] = useState<string[]>([])
   const propertyList = Array.isArray(properties.data) ? properties.data : []
@@ -3257,7 +3773,7 @@ export function TenantOwnerInspectionsPage() {
         <WithBone name="owner-page-inspections" loading={inspections.isLoading} fallback={<DashboardTableSkeleton />}>
           <Card className="shadow-none"><CardHeader><CardTitle>Inspections</CardTitle><CardDescription>Assigned worker, worker report, and cost tracking now visible here.</CardDescription></CardHeader><CardContent className="space-y-3">{inspectionList.length ? inspectionList.map((item) => {
             const assignedWorker = workerList.find((user) => user.id === item.assignedTo)
-            return <div key={item._id} className="rounded-xl border p-4"><div className="flex flex-wrap gap-2"><p className="font-medium text-slate-950">{item.type}</p><Badge variant={item.completed ? "default" : "outline"}>{item.completed ? "Done" : "Pending"}</Badge><Badge variant={item.assignedTo ? "default" : "secondary"}>{assignedWorker?.fullName ?? "Unassigned"}</Badge></div><p className="mt-2 text-sm text-slate-600">{item.scheduledAt ? new Date(item.scheduledAt).toLocaleDateString() : "No date"}</p><div className="mt-3 grid gap-3 rounded-xl bg-slate-50 p-3 text-sm sm:grid-cols-4"><div><p className="text-xs uppercase tracking-wide text-slate-500">Worker report</p><p className="font-medium text-slate-950">{item.workerReport ?? "No report yet"}</p></div><div><p className="text-xs uppercase tracking-wide text-slate-500">Reported at</p><p className="font-medium text-slate-950">{item.workerReportedAt ? new Date(item.workerReportedAt).toLocaleDateString() : "Not submitted"}</p></div><div><p className="text-xs uppercase tracking-wide text-slate-500">Estimated</p><p className="font-medium text-slate-950">{formatMoney(item.estimatedCost ?? 0, (item.currency ?? "usd").toUpperCase())}</p></div><div><p className="text-xs uppercase tracking-wide text-slate-500">Actual</p><p className="font-medium text-slate-950">{formatMoney(item.actualCost ?? 0, (item.currency ?? "usd").toUpperCase())}</p></div></div><div className="mt-3 rounded-xl border bg-white p-3"><p className="text-xs uppercase tracking-wide text-slate-500">Damage report</p><p className="mt-1 text-sm text-slate-700">{item.damageReport ?? "No damage report"}</p></div></div>
+            return <div key={item._id} className="rounded-xl border p-4"><div className="flex flex-wrap gap-2"><p className="font-medium text-slate-950">{item.type}</p><Badge variant={item.completed ? "default" : "outline"}>{item.completed ? "Done" : "Pending"}</Badge><Badge variant={item.assignedTo ? "default" : "secondary"}>{assignedWorker?.fullName ?? "Unassigned"}</Badge><Badge variant={item.paymentStatus === "paid" ? "default" : "secondary"}>{item.paymentStatus ?? "unpaid"}</Badge></div><p className="mt-2 text-sm text-slate-600">{item.scheduledAt ? new Date(item.scheduledAt).toLocaleDateString() : "No date"}</p><div className="mt-3 grid gap-3 rounded-xl bg-slate-50 p-3 text-sm sm:grid-cols-4"><div><p className="text-xs uppercase tracking-wide text-slate-500">Worker report</p><p className="font-medium text-slate-950">{item.workerReport ?? "No report yet"}</p></div><div><p className="text-xs uppercase tracking-wide text-slate-500">Reported at</p><p className="font-medium text-slate-950">{item.workerReportedAt ? new Date(item.workerReportedAt).toLocaleDateString() : "Not submitted"}</p></div><div><p className="text-xs uppercase tracking-wide text-slate-500">Estimated</p><p className="font-medium text-slate-950">{formatMoney(item.estimatedCost ?? 0, (item.currency ?? "usd").toUpperCase())}</p></div><div><p className="text-xs uppercase tracking-wide text-slate-500">Actual</p><p className="font-medium text-slate-950">{formatMoney(item.actualCost ?? 0, (item.currency ?? "usd").toUpperCase())}</p></div></div><div className="mt-3 rounded-xl border bg-white p-3"><p className="text-xs uppercase tracking-wide text-slate-500">Damage report</p><p className="mt-1 text-sm text-slate-700">{item.damageReport ?? "No damage report"}</p></div>{item.completed ? <div className="mt-3 flex flex-wrap gap-2"><Button type="button" size="sm" variant={item.paymentStatus === "paid" ? "default" : "outline"} onClick={() => updateInspection.mutate({ id: item._id, payload: { paymentStatus: "paid" } })}>Paid</Button><Button type="button" size="sm" variant={item.paymentStatus === "unpaid" ? "default" : "outline"} onClick={() => updateInspection.mutate({ id: item._id, payload: { paymentStatus: "unpaid" } })}>Unpaid</Button></div> : null}</div>
           }) : <Empty><EmptyHeader><EmptyMedia variant="icon"><ClipboardCheck /></EmptyMedia><EmptyTitle>No inspections yet</EmptyTitle><EmptyDescription>Create first inspection from top sheet.</EmptyDescription></EmptyHeader></Empty>}</CardContent></Card>
         </WithBone>
       </div>

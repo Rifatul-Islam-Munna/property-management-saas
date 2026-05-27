@@ -1,5 +1,6 @@
 "use client"
 
+import Link from "next/link"
 import { useEffect, useMemo, useState } from "react"
 import {
   Bell,
@@ -30,6 +31,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty"
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
+import { UploadCollectionField } from "@/components/shared/upload-collection-field"
+import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Textarea } from "@/components/ui/textarea"
 import {
@@ -675,6 +678,9 @@ function ResidentDocumentsList() {
 function ResidentTicketCreateCard() {
   const workspace = useResidentWorkspaceQuery()
   const createTicket = useResidentCreateTicketMutation()
+  const ticketCategories = ["plumbing", "electrical", "hvac", "cleaning", "appliance", "security", "internet", "structural", "general"]
+  const ticketPriorities = ["low", "medium", "high", "emergency"]
+  const [ticketImages, setTicketImages] = useState<string[]>([])
   const [form, setForm] = useState({
     title: "",
     description: "",
@@ -703,24 +709,62 @@ function ResidentTicketCreateCard() {
                 description: form.description,
                 category: form.category,
                 priority: form.priority,
+                images: ticketImages,
               },
               {
-                onSuccess: () =>
+                onSuccess: () => {
+                  setTicketImages([])
                   setForm({
                     title: "",
                     description: "",
                     category: "general",
                     priority: "medium",
-                  }),
+                  })
+                },
               }
             )
           }}
         >
           <FieldGroup>
             <Field><FieldLabel>Title</FieldLabel><Input value={form.title} onChange={(event) => setForm((current) => ({ ...current, title: event.target.value ?? "" }))} /></Field>
-            <Field><FieldLabel>Category</FieldLabel><Input value={form.category} onChange={(event) => setForm((current) => ({ ...current, category: event.target.value ?? "" }))} /></Field>
-            <Field><FieldLabel>Priority</FieldLabel><Input value={form.priority} onChange={(event) => setForm((current) => ({ ...current, priority: event.target.value ?? "" }))} /></Field>
+            <Field>
+              <FieldLabel>Category</FieldLabel>
+              <Select value={form.category} onValueChange={(value) => setForm((current) => ({ ...current, category: value ?? "general" }))}>
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    {ticketCategories.map((item) => (
+                      <SelectItem key={item} value={item}>{item}</SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+            </Field>
+            <Field>
+              <FieldLabel>Priority</FieldLabel>
+              <Select value={form.priority} onValueChange={(value) => setForm((current) => ({ ...current, priority: value ?? "medium" }))}>
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    {ticketPriorities.map((item) => (
+                      <SelectItem key={item} value={item}>{item}</SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+            </Field>
             <Field><FieldLabel>Description</FieldLabel><Textarea value={form.description} onChange={(event) => setForm((current) => ({ ...current, description: event.target.value ?? "" }))} /></Field>
+            <UploadCollectionField
+              label="Issue images (Optional)"
+              accept="image/*"
+              kind="image"
+              values={ticketImages}
+              onChange={setTicketImages}
+            />
           </FieldGroup>
           <Button type="submit" disabled={createTicket.isPending || !workspace.data?.property?._id || !form.title || !form.description}>
             Submit ticket
@@ -1344,36 +1388,17 @@ export function ResidentTicketsPage() {
 }
 
 export function ResidentWorkOrdersPage() {
-  const tickets = useResidentTicketsQuery()
-  const items = (tickets.data ?? []).filter((item) => item.status !== "open")
-
   return (
     <div className="space-y-6">
-      <ResidentPageHero icon={ClipboardCheck} badge="Work" title="Work orders" body="Resident-facing repair pipeline derived from your ticket progress." />
-      <WithBone name="resident-work-orders" loading={tickets.isLoading} fallback={<DashboardTableSkeleton />}>
-        <Card className="shadow-none">
-          <CardHeader><CardTitle>Repair pipeline</CardTitle><CardDescription>Assigned, in-progress, waiting, and completed support work.</CardDescription></CardHeader>
-          <CardContent className="space-y-3">
-            {items.length ? items.map((item) => (
-              <div key={item._id} className="rounded-xl border p-4">
-                <div className="flex flex-wrap gap-2">
-                  <p className="font-medium text-slate-950">{item.title}</p>
-                  <Badge>{item.status}</Badge>
-                </div>
-                <p className="mt-2 text-sm text-slate-600">{item.description}</p>
-              </div>
-            )) : (
-              <Empty>
-                <EmptyHeader>
-                  <EmptyMedia variant="icon"><ClipboardCheck /></EmptyMedia>
-                  <EmptyTitle>No work orders visible yet</EmptyTitle>
-                  <EmptyDescription>Ticket progress past open stage appears here.</EmptyDescription>
-                </EmptyHeader>
-              </Empty>
-            )}
-          </CardContent>
-        </Card>
-      </WithBone>
+      <ResidentPageHero icon={Ticket} badge="Tickets" title="Tickets" body="Repair flow now stays inside tickets from request to completion." />
+      <Card className="shadow-none">
+        <CardHeader><CardTitle>Single support flow</CardTitle><CardDescription>Open ticket page for status, images, notes, worker progress, final proof.</CardDescription></CardHeader>
+        <CardContent>
+          <Link href="/dashboard/resident/tickets" className="inline-flex min-h-11 items-center justify-center rounded-xl border px-4 text-sm font-medium text-slate-950">
+            Open tickets
+          </Link>
+        </CardContent>
+      </Card>
     </div>
   )
 }

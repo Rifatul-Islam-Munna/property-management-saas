@@ -5,6 +5,8 @@ import {
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import type { JwtUser } from 'src/lib/auth.guard';
+import { Property, PropertyDocument } from 'src/property/entities/property.entity';
+import { Unit, UnitDocument } from 'src/unit/entities/unit.entity';
 import { AddCommentDto } from './dto/add-comment.dto';
 import { CreateTicketDto } from './dto/create-ticket.dto';
 import { QueryTicketDto } from './dto/query-ticket.dto';
@@ -21,6 +23,10 @@ export class TicketService {
   constructor(
     @InjectModel(Ticket.name)
     private readonly ticketModel: Model<TicketDocument>,
+    @InjectModel(Property.name)
+    private readonly propertyModel: Model<PropertyDocument>,
+    @InjectModel(Unit.name)
+    private readonly unitModel: Model<UnitDocument>,
   ) {}
 
   async create(organizationId: string, actor: JwtUser, dto: CreateTicketDto) {
@@ -38,7 +44,7 @@ export class TicketService {
       ],
     });
 
-    return ticket.toObject();
+    return this.enrichTicket(ticket.toObject());
   }
 
   async findAll(organizationId: string, actor: JwtUser, query: QueryTicketDto) {
@@ -54,11 +60,8 @@ export class TicketService {
       fromDate,
       toDate,
     } = query;
-    const filter: Record<string, unknown> = { organizationId };
-
-    if (actor.role === UserRole.WORKER) {
-      filter.assignedTo = actor.id;
-    }
+    const filter: Record<string, unknown> =
+      actor.role === UserRole.WORKER ? { assignedTo: actor.id } : { organizationId };
 
     if (actor.role === UserRole.RENTER || actor.role === UserRole.GUEST) {
       filter.createdBy = actor.id;
@@ -93,7 +96,7 @@ export class TicketService {
     ]);
 
     return {
-      data,
+      data: await this.enrichTickets(data),
       total,
       page,
       limit,
@@ -102,16 +105,24 @@ export class TicketService {
   }
 
   async findById(organizationId: string, actor: JwtUser, id: string) {
-    const ticket = await this.ticketModel.findOne({ _id: id, organizationId }).lean();
+    const filter =
+      actor.role === UserRole.WORKER
+        ? { _id: id, assignedTo: actor.id }
+        : { _id: id, organizationId };
+    const ticket = await this.ticketModel.findOne(filter).lean();
 
     if (!ticket) throw new NotFoundException('Ticket not found');
     this.assertActorCanAccess(ticket, actor);
 
-    return ticket;
+    return this.enrichTicket(ticket);
   }
 
   async update(organizationId: string, id: string, actor: JwtUser, dto: UpdateTicketDto) {
-    const existing = await this.ticketModel.findOne({ _id: id, organizationId });
+    const filter =
+      actor.role === UserRole.WORKER
+        ? { _id: id, assignedTo: actor.id }
+        : { _id: id, organizationId };
+    const existing = await this.ticketModel.findOne(filter);
 
     if (!existing) throw new NotFoundException('Ticket not found');
     this.assertActorCanAccess(existing.toObject(), actor);
@@ -121,14 +132,20 @@ export class TicketService {
         ? {
             status: dto.status,
             actualCost: dto.actualCost,
+            completionNotes: dto.completionNotes,
+            completionProof: dto.completionProof,
           }
         : dto;
 
-    if (updatePayload.status === TicketStatus.COMPLETED && !existing.resolvedAt) {
+    const sanitizedPayload = Object.fromEntries(
+      Object.entries(updatePayload).filter(([, value]) => value !== undefined),
+    );
+
+    if (sanitizedPayload.status === TicketStatus.COMPLETED && !existing.resolvedAt) {
       existing.resolvedAt = new Date();
     }
 
-    Object.assign(existing, updatePayload);
+    Object.assign(existing, sanitizedPayload);
     existing.timeline.push({
       action: 'updated',
       performedBy: actor.id,
@@ -137,7 +154,7 @@ export class TicketService {
     });
     await existing.save();
 
-    return existing.toObject();
+    return this.enrichTicket(existing.toObject());
   }
 
   async assign(
@@ -160,7 +177,7 @@ export class TicketService {
     });
     await ticket.save();
 
-    return ticket.toObject();
+    return this.enrichTicket(ticket.toObject());
   }
 
   async addComment(
@@ -188,7 +205,7 @@ export class TicketService {
     });
     await ticket.save();
 
-    return ticket.toObject();
+    return this.enrichTicket(ticket.toObject());
   }
 
   async addInternalNote(
@@ -216,7 +233,7 @@ export class TicketService {
     });
     await ticket.save();
 
-    return ticket.toObject();
+    return this.enrichTicket(ticket.toObject());
   }
 
   async remove(organizationId: string, id: string) {
@@ -247,5 +264,41 @@ export class TicketService {
     }
 
     throw new NotFoundException('Ticket not found');
+  }
+
+  private async enrichTickets<T extends { propertyId?: string; unitId?: string | null }>(
+    tickets: T[],
+  ) {
+    if (!tickets.length) return tickets;
+
+    const propertyIds = [...new Set(tickets.map((ticket) => ticket.propertyId).filter(Boolean))] as string[];
+    const unitIds = [...new Set(tickets.map((ticket) => ticket.unitId).filter(Boolean))] as string[];
+
+    const [properties, units] = await Promise.all([
+      propertyIds.length
+        ? this.propertyModel.find({ _id: { $in: propertyIds } }).select({ _id: 1, name: 1 }).lean()
+        : [],
+      unitIds.length
+        ? this.unitModel.find({ _id: { $in: unitIds } }).select({ _id: 1, unitNumber: 1 }).lean()
+        : [],
+    ]);
+
+    const propertyMap = new Map<string, string | null>(
+      properties.map((property) => [String(property._id), property.name] as const),
+    );
+    const unitMap = new Map<string, string | null>(
+      units.map((unit) => [String(unit._id), unit.unitNumber] as const),
+    );
+
+    return tickets.map((ticket) => ({
+      ...ticket,
+      propertyName: ticket.propertyId ? propertyMap.get(ticket.propertyId) ?? null : null,
+      unitNumber: ticket.unitId ? unitMap.get(ticket.unitId) ?? null : null,
+    }));
+  }
+
+  private async enrichTicket<T extends { propertyId?: string; unitId?: string | null }>(ticket: T) {
+    const [enriched] = await this.enrichTickets([ticket]);
+    return enriched;
   }
 }

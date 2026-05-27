@@ -37,7 +37,8 @@ export class MessagingService {
 
   async findMessages(organizationId: string, actor: JwtUser, query: QueryMessageDto): Promise<any> {
     const { page = 1, limit = 20, roomId, roomType } = query;
-    const filter: Record<string, unknown> = { organizationId };
+    const filter: Record<string, unknown> =
+      actor.role === 'worker' ? {} : { organizationId };
     if (roomId) filter.roomId = roomId;
     if (roomType) filter.roomType = roomType;
 
@@ -93,7 +94,10 @@ export class MessagingService {
   }
 
   async markRead(organizationId: string, id: string, userId: string): Promise<any> {
-    const message = await this.messageModel.findOne({ _id: id, organizationId });
+    const message = await this.messageModel.findOne({
+      _id: id,
+      $or: [{ organizationId }, { senderId: userId }, { recipientIds: userId }, { roomId: { $regex: userId } }],
+    });
     if (!message) throw new NotFoundException('Message not found');
     if (!message.readBy.includes(userId)) {
       message.readBy.push(userId);

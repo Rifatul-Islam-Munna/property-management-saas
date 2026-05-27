@@ -1,13 +1,5 @@
-import { DashboardGate } from "@/components/dashboard/dashboard-gate"
-import { ResidentWorkOrdersPage } from "@/components/dashboard/resident-pages"
-import { ResidentShell } from "@/components/dashboard/resident-shell"
+import { redirect } from "next/navigation"
 
 export default function ResidentWorkOrdersRoute() {
-  return (
-    <DashboardGate roleKey="resident" bare>
-      <ResidentShell>
-        <ResidentWorkOrdersPage />
-      </ResidentShell>
-    </DashboardGate>
-  )
+  redirect("/dashboard/resident/tickets")
 }

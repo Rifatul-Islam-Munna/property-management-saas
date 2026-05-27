@@ -2,6 +2,8 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import type { JwtUser } from 'src/lib/auth.guard';
+import { Property, PropertyDocument } from 'src/property/entities/property.entity';
+import { Unit, UnitDocument } from 'src/unit/entities/unit.entity';
 import { CreateInspectionDto } from './dto/create-inspection.dto';
 import { QueryInspectionDto } from './dto/query-inspection.dto';
 import { ReportInspectionDto } from './dto/report-inspection.dto';
@@ -14,6 +16,10 @@ export class InspectionService {
   constructor(
     @InjectModel(Inspection.name)
     private readonly inspectionModel: Model<InspectionDocument>,
+    @InjectModel(Property.name)
+    private readonly propertyModel: Model<PropertyDocument>,
+    @InjectModel(Unit.name)
+    private readonly unitModel: Model<UnitDocument>,
   ) {}
 
   async create(organizationId: string, actor: JwtUser, dto: CreateInspectionDto): Promise<any> {
@@ -22,16 +28,17 @@ export class InspectionService {
       organizationId,
       createdBy: actor.id,
     });
-    return inspection.toObject();
+    return this.enrichInspection(inspection.toObject());
   }
 
-  async findAll(organizationId: string, query: QueryInspectionDto): Promise<any> {
+  async findAll(organizationId: string, actor: JwtUser, query: QueryInspectionDto): Promise<any> {
     const { page = 1, limit = 20, propertyId, type, completed, assignedTo } = query;
-    const filter: Record<string, unknown> = { organizationId };
+    const filter: Record<string, unknown> =
+      actor.role === UserRole.WORKER ? { assignedTo: actor.id } : { organizationId };
     if (propertyId) filter.propertyId = propertyId;
     if (type) filter.type = type;
     if (completed !== undefined) filter.completed = completed;
-    if (assignedTo) filter.assignedTo = assignedTo;
+    if (assignedTo && actor.role !== UserRole.WORKER) filter.assignedTo = assignedTo;
 
     const [data, total] = await Promise.all([
       this.inspectionModel
@@ -43,13 +50,17 @@ export class InspectionService {
       this.inspectionModel.countDocuments(filter),
     ]);
 
-    return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
+    return { data: await this.enrichInspections(data), total, page, limit, totalPages: Math.ceil(total / limit) };
   }
 
-  async findById(organizationId: string, id: string): Promise<any> {
-    const inspection = await this.inspectionModel.findOne({ _id: id, organizationId }).lean();
+  async findById(organizationId: string, actor: JwtUser, id: string): Promise<any> {
+    const filter =
+      actor.role === UserRole.WORKER
+        ? { _id: id, assignedTo: actor.id }
+        : { _id: id, organizationId };
+    const inspection = await this.inspectionModel.findOne(filter).lean();
     if (!inspection) throw new NotFoundException('Inspection not found');
-    return inspection;
+    return this.enrichInspection(inspection);
   }
 
   async update(organizationId: string, id: string, dto: UpdateInspectionDto): Promise<any> {
@@ -57,13 +68,16 @@ export class InspectionService {
     if (dto.completed) {
       updatePayload.completedAt = new Date();
     }
+    if (dto.paymentStatus !== undefined) {
+      updatePayload.paidAt = dto.paymentStatus === 'paid' ? new Date() : null;
+    }
     const inspection = await this.inspectionModel.findOneAndUpdate(
       { _id: id, organizationId },
       updatePayload,
       { new: true },
     );
     if (!inspection) throw new NotFoundException('Inspection not found');
-    return inspection.toObject();
+    return this.enrichInspection(inspection.toObject());
   }
 
   async remove(organizationId: string, id: string): Promise<{ deleted: boolean }> {
@@ -78,12 +92,12 @@ export class InspectionService {
     id: string,
     dto: ReportInspectionDto,
   ): Promise<any> {
-    const inspection = await this.inspectionModel.findOne({ _id: id, organizationId });
+    const filter =
+      actor.role === UserRole.WORKER
+        ? { _id: id, assignedTo: actor.id }
+        : { _id: id, organizationId };
+    const inspection = await this.inspectionModel.findOne(filter);
     if (!inspection) throw new NotFoundException('Inspection not found');
-
-    if (actor.role === UserRole.WORKER && inspection.assignedTo !== actor.id) {
-      throw new NotFoundException('Inspection not assigned to this worker');
-    }
 
     inspection.workerReport = dto.workerReport ?? inspection.workerReport ?? null;
     inspection.workerReportFiles = dto.workerReportFiles ?? inspection.workerReportFiles ?? [];
@@ -95,6 +109,10 @@ export class InspectionService {
     if (dto.currency !== undefined) {
       inspection.currency = dto.currency;
     }
+    if (dto.paymentStatus !== undefined) {
+      inspection.paymentStatus = dto.paymentStatus as 'unpaid' | 'paid';
+      inspection.paidAt = dto.paymentStatus === 'paid' ? new Date() : null;
+    }
     inspection.workerReportedAt = new Date();
     inspection.workerReportedBy = actor.id;
 
@@ -104,6 +122,31 @@ export class InspectionService {
     }
 
     await inspection.save();
-    return inspection.toObject();
+    return this.enrichInspection(inspection.toObject());
+  }
+
+  private async enrichInspections<T extends { propertyId?: string; unitId?: string | null }>(items: T[]) {
+    if (!items.length) return items;
+
+    const propertyIds = [...new Set(items.map((item) => item.propertyId).filter(Boolean))] as string[];
+    const unitIds = [...new Set(items.map((item) => item.unitId).filter(Boolean))] as string[];
+    const [properties, units] = await Promise.all([
+      propertyIds.length ? this.propertyModel.find({ _id: { $in: propertyIds } }).select({ _id: 1, name: 1 }).lean() : [],
+      unitIds.length ? this.unitModel.find({ _id: { $in: unitIds } }).select({ _id: 1, unitNumber: 1 }).lean() : [],
+    ]);
+
+    const propertyMap = new Map<string, string | null>(properties.map((property) => [String(property._id), property.name] as const));
+    const unitMap = new Map<string, string | null>(units.map((unit) => [String(unit._id), unit.unitNumber] as const));
+
+    return items.map((item) => ({
+      ...item,
+      propertyName: item.propertyId ? propertyMap.get(item.propertyId) ?? null : null,
+      unitNumber: item.unitId ? unitMap.get(item.unitId) ?? null : null,
+    }));
+  }
+
+  private async enrichInspection<T extends { propertyId?: string; unitId?: string | null }>(item: T) {
+    const [enriched] = await this.enrichInspections([item]);
+    return enriched;
   }
 }

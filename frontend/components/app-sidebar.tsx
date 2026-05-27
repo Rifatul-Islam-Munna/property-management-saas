@@ -16,6 +16,7 @@ import {
   RepeatIcon,
   Settings2Icon,
   ShieldIcon,
+  TicketIcon,
   UsersIcon,
   WrenchIcon,
 } from "lucide-react"
@@ -72,7 +73,6 @@ function buildNav(role: string | undefined, pathname: string) {
           items: [
             { title: "Vendors", url: "/dashboard/tenant-owner/vendors", icon: <BriefcaseBusinessIcon /> },
             { title: "Tickets", url: "/dashboard/tenant-owner/tickets", icon: <CreditCardIcon /> },
-            { title: "Work Orders", url: "/dashboard/tenant-owner/work-orders", icon: <ClipboardCheckIcon /> },
             { title: "Recurring", url: "/dashboard/tenant-owner/recurring", icon: <RepeatIcon /> },
             { title: "Inspections", url: "/dashboard/tenant-owner/inspections", icon: <FileChartColumnIcon /> },
           ],
@@ -130,10 +130,16 @@ function buildNav(role: string | undefined, pathname: string) {
           label: "Workspace",
           items: [
             { title: "Overview", url: "/dashboard/worker", icon: <LayoutDashboardIcon />, isActive: pathname === "/dashboard/worker" },
+            { title: "Tickets", url: "/dashboard/worker/tickets", icon: <TicketIcon />, isActive: pathname === "/dashboard/worker/tickets" },
+            { title: "Inspections", url: "/dashboard/worker/inspections", icon: <FileChartColumnIcon />, isActive: pathname === "/dashboard/worker/inspections" },
+            { title: "Recurring", url: "/dashboard/worker/recurring", icon: <RepeatIcon />, isActive: pathname === "/dashboard/worker/recurring" },
+            { title: "Messages", url: "/dashboard/worker/messages", icon: <FileTextIcon />, isActive: pathname === "/dashboard/worker/messages" },
           ],
         },
       ],
-      navSecondary: [],
+      navSecondary: [
+        { title: "Settings", url: "/dashboard/worker/settings", icon: <Settings2Icon />, isActive: pathname === "/dashboard/worker/settings" },
+      ],
     }
   }
 
@@ -174,7 +180,6 @@ function buildNav(role: string | undefined, pathname: string) {
         items: [
           { title: "Vendors", url: "/dashboard/resident/vendors", icon: <BriefcaseBusinessIcon /> },
           { title: "Tickets", url: "/dashboard/resident/tickets", icon: <CreditCardIcon /> },
-          { title: "Work Orders", url: "/dashboard/resident/work-orders", icon: <ClipboardCheckIcon /> },
           { title: "Recurring", url: "/dashboard/resident/recurring", icon: <RepeatIcon /> },
           { title: "Inspections", url: "/dashboard/resident/inspections", icon: <FileChartColumnIcon /> },
         ],

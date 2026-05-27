@@ -7,6 +7,7 @@ import { Roles } from 'src/lib/roles.decorator';
 import { RolesGuard } from 'src/lib/roles.guard';
 import { CreateUserDto } from './dto/create-user.dto';
 import { LinkGlobalUserDto } from './dto/link-global-user.dto';
+import { LeaveWorkerAssignmentDto } from './dto/leave-worker-assignment.dto';
 import { LoginDto } from './dto/login.dto';
 import { PublicSignupDto } from './dto/public-signup.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
@@ -126,5 +127,16 @@ export class UserController {
     @Body() dto: UpdateAssignmentRequestStatusDto,
   ): Promise<any> {
     return this.userService.updateAssignmentRequestStatus(req.user, id, dto);
+  }
+
+  @ApiBearerAuth()
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles(UserRole.WORKER)
+  @Post('worker/leave')
+  leaveWorkerAssignment(
+    @Req() req: ExpressRequest,
+    @Body() dto: LeaveWorkerAssignmentDto,
+  ): Promise<{ left: boolean; user: UserResponse }> {
+    return this.userService.leaveWorkerAssignment(req.user, dto);
   }
 }

@@ -211,7 +211,9 @@ export type BillItem = {
 export type TicketItem = {
   _id: string
   propertyId?: string
+  propertyName?: string | null
   unitId?: string
+  unitNumber?: string | null
   tenantId?: string
   title: string
   description?: string
@@ -238,9 +240,12 @@ export type TicketItem = {
     performedAt?: string
     details: string
   }>
+  scheduledDate?: string | null
   dueDate?: string | null
   estimatedCost?: number | null
   actualCost?: number | null
+  completionNotes?: string | null
+  completionProof?: string[]
   resolvedAt?: string | null
   createdAt?: string
 }
@@ -316,12 +321,16 @@ export type WorkOrderItem = {
 export type InspectionItem = {
   _id: string
   propertyId?: string
+  propertyName?: string | null
   unitId?: string | null
+  unitNumber?: string | null
   type: string
   scheduledAt?: string
   estimatedCost?: number | null
   actualCost?: number | null
   currency?: string | null
+  paymentStatus?: "unpaid" | "paid" | null
+  paidAt?: string | null
   checklist?: string[]
   photos?: string[]
   assignedTo?: string | null
@@ -338,12 +347,19 @@ export type InspectionItem = {
 export type RecurringMaintenanceItem = {
   _id: string
   propertyId?: string
+  propertyName?: string | null
   unitId?: string | null
+  unitNumber?: string | null
   title: string
   description?: string
   frequency: string
   nextRunAt?: string
   assignedTo?: string | null
+  estimatedCost?: number | null
+  actualCost?: number | null
+  currency?: string | null
+  paymentStatus?: "unpaid" | "paid" | null
+  paidAt?: string | null
   runHistory?: Array<{
     status: string
     note?: string | null

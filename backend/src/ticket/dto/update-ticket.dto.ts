@@ -53,6 +53,11 @@ export class UpdateTicketDto {
   @ApiPropertyOptional({ example: '2026-06-01T00:00:00.000Z' })
   @IsOptional()
   @IsDateString()
+  scheduledDate?: string;
+
+  @ApiPropertyOptional({ example: '2026-06-03T00:00:00.000Z' })
+  @IsOptional()
+  @IsDateString()
   dueDate?: string;
 
   @ApiPropertyOptional({ example: 150.0 })
@@ -64,4 +69,15 @@ export class UpdateTicketDto {
   @IsOptional()
   @IsNumber()
   actualCost?: number;
+
+  @ApiPropertyOptional({ example: 'Fixed issue and tested result' })
+  @IsOptional()
+  @IsString()
+  completionNotes?: string;
+
+  @ApiPropertyOptional({ example: ['https://cdn.example.com/proof-1.jpg'] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  completionProof?: string[];
 }

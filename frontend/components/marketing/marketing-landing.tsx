@@ -56,7 +56,7 @@ const offerCards = [
   {
     icon: Wrench,
     title: "Assign your workers clearly",
-    body: "Move tickets and work orders to the right worker without messy chat handoff.",
+    body: "Move tickets to right worker without messy chat handoff.",
   },
   {
     icon: FileText,
@@ -80,7 +80,7 @@ const proofCards = [
   },
   {
     icon: ClipboardCheck,
-    title: "Tickets to work orders",
+    title: "Tickets to completion",
     body: "Issue comes in, worker gets assigned, proof comes back, status stays visible to owner.",
   },
   {
@@ -436,7 +436,7 @@ export function MarketingLanding() {
                   {[
                     ["Notices", "By role, by property, by exact user"],
                     ["Payments", "Renter monthly, guest one-time"],
-                    ["Workers", "Assign tickets + work orders"],
+                    ["Workers", "Assign tickets"],
                     ["Files", "Upload + send from device"],
                   ].map(([title, body]) => (
                     <div key={title} className="rounded-2xl border border-white/10 bg-black/15 p-4">
@@ -661,7 +661,7 @@ export function MarketingLanding() {
                 ["Can tenant owner manage many properties?", "Yes. One tenant owner can manage many properties, units, renters, guests, workers, vendors, and operations from one account."],
                 ["Can I send notice to exact users?", "Yes. Notice flow can target by role, by property, or by exact selected users."],
                 ["Can I track monthly rent?", "Yes. Renter payment is tracked month by month. Guest fee can be tracked separately as one-time payment."],
-                ["Can workers receive tasks clearly?", "Yes. Tickets and work orders can be assigned to linked workers with cleaner status flow and status updates."],
+                ["Can workers receive tasks clearly?", "Yes. Tickets can be assigned to linked workers with cleaner status flow and status updates."],
                 ["Can I send documents too?", "Yes. Upload documents from device, then send to exact users directly from owner workflow."],
                 ["Can this grow with subscriptions?", "Yes. Plans, limits, and public Paddle checkout flow are already wired for SaaS growth."],
               ].map(([question, answer], index) => (

@@ -4,7 +4,7 @@ import { AdminDashboardBlock } from "@/components/dashboard/admin-dashboard-bloc
 import { DashboardPanelSkeleton } from "@/components/dashboard/dashboard-loading"
 import { ResidentDashboardBlock } from "@/components/dashboard/resident-dashboard-block"
 import { TenantOwnerDashboardBlock } from "@/components/dashboard/tenant-owner-dashboard-block"
-import { WorkerDashboard } from "@/components/dashboard/worker-dashboard"
+import { WorkerDashboardBlock } from "@/components/dashboard/worker-dashboard-block"
 import { DashboardGate } from "@/components/dashboard/dashboard-gate"
 import { useMeQuery } from "@/hooks/use-auth"
 
@@ -33,8 +33,8 @@ export default function DashboardPage() {
 
   if (me.role === "worker") {
     return (
-      <DashboardGate roleKey="worker">
-        <WorkerDashboard />
+      <DashboardGate roleKey="worker" bare>
+        <WorkerDashboardBlock />
       </DashboardGate>
     )
   }

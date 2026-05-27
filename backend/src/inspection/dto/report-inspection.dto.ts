@@ -29,6 +29,11 @@ export class ReportInspectionDto {
   @Min(0)
   actualCost?: number;
 
+  @ApiPropertyOptional({ example: 'paid' })
+  @IsOptional()
+  @IsString()
+  paymentStatus?: string;
+
   @ApiPropertyOptional({ example: 'usd' })
   @IsOptional()
   @IsString()

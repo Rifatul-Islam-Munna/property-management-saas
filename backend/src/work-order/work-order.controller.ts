@@ -42,7 +42,7 @@ export class WorkOrderController {
   async findAll(@Req() req: ExpressRequest, @Query() query: QueryWorkOrderDto) {
     const scopedQuery =
       req.user.role === UserRole.WORKER ? { ...query, assignedTo: req.user.id } : query;
-    const data = await this.workOrderService.findAll(req.user.organizationId ?? '', scopedQuery);
+    const data = await this.workOrderService.findAll(req.user.organizationId ?? '', req.user, scopedQuery);
     return new SuccessResponseDto(200, 'Work order list fetched', data);
   }
 

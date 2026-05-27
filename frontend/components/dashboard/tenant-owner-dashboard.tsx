@@ -368,7 +368,7 @@ export function TenantOwnerDashboard() {
                       <div className="mt-3 grid gap-3">
                         <div className="rounded-xl border p-3 text-sm">
                           <div className="flex items-center justify-between gap-2">
-                            <span className="font-medium text-slate-950">Work orders</span>
+                            <span className="font-medium text-slate-950">Repair jobs</span>
                             <Badge variant="outline">{finance?.opsCosts?.workOrders?.count ?? 0}</Badge>
                           </div>
                           <p className="mt-1 text-xs text-slate-500">Estimated {formatMoney(finance?.opsCosts?.workOrders?.estimated ?? 0, defaultCurrency)} | Actual {formatMoney(finance?.opsCosts?.workOrders?.actual ?? 0, defaultCurrency)}</p>
@@ -608,7 +608,7 @@ export function TenantOwnerDashboard() {
             <Card className="shadow-none">
               <CardHeader>
                 <CardTitle>Ops pipeline</CardTitle>
-                <CardDescription>Vendors, work orders, recurring plans, inspections.</CardDescription>
+                <CardDescription>Vendors, tickets, recurring plans, inspections.</CardDescription>
               </CardHeader>
               <CardContent className="grid gap-3 sm:grid-cols-2">
                 <div className="rounded-xl border p-3">
@@ -616,8 +616,8 @@ export function TenantOwnerDashboard() {
                   <p className="mt-2 text-2xl font-semibold text-slate-950">{vendorsList.length}</p>
                 </div>
                 <div className="rounded-xl border p-3">
-                  <div className="flex items-center gap-2 text-slate-700"><ClipboardCheck className="size-4" /> Work orders</div>
-                  <p className="mt-2 text-2xl font-semibold text-slate-950">{workOrdersList.length}</p>
+                  <div className="flex items-center gap-2 text-slate-700"><ClipboardCheck className="size-4" /> Tickets in progress</div>
+                  <p className="mt-2 text-2xl font-semibold text-slate-950">{ticketsList.filter((item) => item.status === "in_progress").length}</p>
                 </div>
                 <div className="rounded-xl border p-3">
                   <div className="flex items-center gap-2 text-slate-700"><Repeat className="size-4" /> Recurring</div>

@@ -54,6 +54,11 @@ export class CreateInspectionDto {
   @IsString()
   currency?: string;
 
+  @ApiPropertyOptional({ example: 'unpaid' })
+  @IsOptional()
+  @IsString()
+  paymentStatus?: string;
+
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()

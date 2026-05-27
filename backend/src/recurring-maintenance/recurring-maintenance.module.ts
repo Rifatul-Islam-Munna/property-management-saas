@@ -1,5 +1,7 @@
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
+import { Property, PropertySchema } from 'src/property/entities/property.entity';
+import { Unit, UnitSchema } from 'src/unit/entities/unit.entity';
 import { RecurringMaintenance, RecurringMaintenanceSchema } from './entities/recurring-maintenance.entity';
 import { RecurringMaintenanceController } from './recurring-maintenance.controller';
 import { RecurringMaintenanceService } from './recurring-maintenance.service';
@@ -8,6 +10,8 @@ import { RecurringMaintenanceService } from './recurring-maintenance.service';
   imports: [
     MongooseModule.forFeature([
       { name: RecurringMaintenance.name, schema: RecurringMaintenanceSchema },
+      { name: Property.name, schema: PropertySchema },
+      { name: Unit.name, schema: UnitSchema },
     ]),
   ],
   controllers: [RecurringMaintenanceController],

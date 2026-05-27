@@ -7,6 +7,9 @@ import { json, urlencoded } from 'express';
 import { ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AllExceptionsFilter } from './lib/all-exceptions.filter';
+import { DevHttpLoggingInterceptor } from './lib/dev-http-logging.interceptor';
+import { attachDevRuntimeMethodLogging } from './lib/dev-runtime-method-logger';
+import { isDevLoggingEnabled } from './lib/dev-logging.util';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -31,6 +34,10 @@ async function bootstrap() {
     }),
   );
   app.useGlobalFilters(new AllExceptionsFilter());
+  if (isDevLoggingEnabled()) {
+    app.useGlobalInterceptors(new DevHttpLoggingInterceptor());
+    attachDevRuntimeMethodLogging(app);
+  }
 
   if (
     process.env.NODE_ENV !== 'production' ||

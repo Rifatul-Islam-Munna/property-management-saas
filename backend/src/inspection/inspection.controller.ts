@@ -32,14 +32,14 @@ export class InspectionController {
   async findAll(@Req() req: ExpressRequest, @Query() query: QueryInspectionDto): Promise<SuccessResponseDto<any>> {
     const scopedQuery =
       req.user.role === UserRole.WORKER ? { ...query, assignedTo: req.user.id } : query;
-    const data = await this.inspectionService.findAll(req.user.organizationId ?? '', scopedQuery);
+    const data = await this.inspectionService.findAll(req.user.organizationId ?? '', req.user, scopedQuery);
     return new SuccessResponseDto(200, 'Inspection list fetched', data);
   }
 
   @Get(':id')
   @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.TETENTWONER, UserRole.WORKER)
   async findById(@Req() req: ExpressRequest, @Param('id', MongoIdPipe) id: string): Promise<SuccessResponseDto<any>> {
-    const data = await this.inspectionService.findById(req.user.organizationId ?? '', id);
+    const data = await this.inspectionService.findById(req.user.organizationId ?? '', req.user, id);
     return new SuccessResponseDto(200, 'Inspection fetched', data);
   }
 

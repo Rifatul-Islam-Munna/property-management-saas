@@ -60,6 +60,21 @@ export class RecurringMaintenance {
   @Prop({ type: String, default: null, index: true })
   assignedTo?: string | null;
 
+  @Prop({ type: Number, default: 0, min: 0 })
+  estimatedCost?: number | null;
+
+  @Prop({ type: Number, default: 0, min: 0 })
+  actualCost?: number | null;
+
+  @Prop({ type: String, default: 'usd' })
+  currency?: string | null;
+
+  @Prop({ type: String, enum: ['unpaid', 'paid'], default: 'unpaid' })
+  paymentStatus?: 'unpaid' | 'paid';
+
+  @Prop({ type: Date, default: null })
+  paidAt?: Date | null;
+
   @Prop({
     type: [
       {

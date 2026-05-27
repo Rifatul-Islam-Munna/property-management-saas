@@ -32,14 +32,14 @@ export class RecurringMaintenanceController {
   async findAll(@Req() req: ExpressRequest, @Query() query: QueryRecurringMaintenanceDto): Promise<SuccessResponseDto<any>> {
     const scopedQuery =
       req.user.role === UserRole.WORKER ? { ...query, assignedTo: req.user.id } : query;
-    const data = await this.recurringService.findAll(req.user.organizationId ?? '', scopedQuery);
+    const data = await this.recurringService.findAll(req.user.organizationId ?? '', req.user, scopedQuery);
     return new SuccessResponseDto(200, 'Recurring maintenance list fetched', data);
   }
 
   @Get(':id')
   @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.TETENTWONER, UserRole.WORKER)
   async findById(@Req() req: ExpressRequest, @Param('id', MongoIdPipe) id: string): Promise<SuccessResponseDto<any>> {
-    const data = await this.recurringService.findById(req.user.organizationId ?? '', id);
+    const data = await this.recurringService.findById(req.user.organizationId ?? '', req.user, id);
     return new SuccessResponseDto(200, 'Recurring maintenance fetched', data);
   }
 

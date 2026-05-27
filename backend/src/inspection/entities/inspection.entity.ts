@@ -44,6 +44,12 @@ export class Inspection {
   @Prop({ type: String, default: 'usd' })
   currency?: string | null;
 
+  @Prop({ type: String, enum: ['unpaid', 'paid'], default: 'unpaid' })
+  paymentStatus?: 'unpaid' | 'paid';
+
+  @Prop({ type: Date, default: null })
+  paidAt?: Date | null;
+
   @Prop({ type: String, default: null })
   damageReport?: string | null;
 

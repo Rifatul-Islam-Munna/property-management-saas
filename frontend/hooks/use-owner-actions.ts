@@ -166,11 +166,21 @@ type OwnerTicketAssignPayload = {
   assignedTo: string
 }
 
+type OwnerTicketNotePayload = {
+  id: string
+  content: string
+}
+
 type OwnerTicketUpdatePayload = {
   id: string
   payload: {
     status?: string
+    scheduledDate?: string
+    dueDate?: string
+    estimatedCost?: number
     actualCost?: number
+    completionNotes?: string
+    completionProof?: string[]
   }
 }
 
@@ -200,6 +210,7 @@ type OwnerInspectionPayload = {
   estimatedCost?: number
   actualCost?: number
   currency?: string
+  paymentStatus?: string
   checklist?: string[]
   photos?: string[]
   damageReport?: string
@@ -215,6 +226,10 @@ type OwnerRecurringPayload = {
   frequency: string
   nextRunAt: string
   assignedTo?: string
+  estimatedCost?: number
+  actualCost?: number
+  currency?: string
+  paymentStatus?: string
   isActive?: boolean
 }
 
@@ -541,6 +556,29 @@ export function useOwnerUpdateTicketMutation() {
   })
 }
 
+export function useOwnerAddTicketNoteMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationKey: ["owner", "ticket", "note"],
+    mutationFn: async ({ id, content }: OwnerTicketNotePayload) => {
+      const [data, error] = await postRequest<ApiSuccessResponse<TicketItem>, { content: string }>(
+        `/ticket/${id}/internal-notes`,
+        { content }
+      )
+      if (error || !data) throw new Error(error?.message ?? "Ticket note failed")
+      return data
+    },
+    onSuccess: async () => {
+      toast.success("Owner note saved")
+      await queryClient.invalidateQueries({ queryKey: ["owner", "tickets"] })
+      await queryClient.invalidateQueries({ queryKey: ["worker", "tickets"] })
+    },
+    onError: (error: Error) => {
+      toast.error(error.message)
+    },
+  })
+}
+
 export function useOwnerCreateWorkOrderMutation() {
   const queryClient = useQueryClient()
   return useCommonMutationApi<ApiSuccessResponse<WorkOrderItem>, OwnerWorkOrderPayload>({
@@ -576,6 +614,50 @@ export function useOwnerCreateRecurringMaintenanceMutation() {
     successMessage: "Recurring maintenance created",
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["owner", "recurring-maintenances"] })
+    },
+  })
+}
+
+export function useOwnerUpdateInspectionMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationKey: ["owner", "update", "inspection"],
+    mutationFn: async ({ id, payload }: { id: string; payload: Partial<OwnerInspectionPayload> }) => {
+      const [data, error] = await patchRequest<ApiSuccessResponse<InspectionItem>, typeof payload>(
+        `/inspection/${id}`,
+        payload
+      )
+      if (error || !data) throw new Error(error?.message ?? "Inspection update failed")
+      return data
+    },
+    onSuccess: async () => {
+      toast.success("Inspection updated")
+      await queryClient.invalidateQueries({ queryKey: ["owner", "inspections"] })
+    },
+    onError: (error: Error) => {
+      toast.error(error.message)
+    },
+  })
+}
+
+export function useOwnerUpdateRecurringMaintenanceMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationKey: ["owner", "update", "recurring-maintenance"],
+    mutationFn: async ({ id, payload }: { id: string; payload: Partial<OwnerRecurringPayload> }) => {
+      const [data, error] = await patchRequest<ApiSuccessResponse<RecurringMaintenanceItem>, typeof payload>(
+        `/recurring-maintenance/${id}`,
+        payload
+      )
+      if (error || !data) throw new Error(error?.message ?? "Recurring maintenance update failed")
+      return data
+    },
+    onSuccess: async () => {
+      toast.success("Recurring maintenance updated")
+      await queryClient.invalidateQueries({ queryKey: ["owner", "recurring-maintenances"] })
+    },
+    onError: (error: Error) => {
+      toast.error(error.message)
     },
   })
 }

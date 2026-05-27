@@ -23,6 +23,8 @@ type WorkerTicketPayload = {
   id: string
   status?: string
   actualCost?: number
+  completionNotes?: string
+  completionProof?: string[]
 }
 
 type WorkerTicketNotePayload = {
@@ -36,6 +38,7 @@ type WorkerInspectionReportPayload = {
   workerReportFiles?: string[]
   damageReport?: string
   notes?: string
+  actualCost?: number
   completed?: boolean
 }
 
@@ -44,6 +47,7 @@ type WorkerRecurringReportPayload = {
   status?: string
   note?: string
   files?: string[]
+  actualCost?: number
 }
 
 type WorkerMessagePayload = {

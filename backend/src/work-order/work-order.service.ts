@@ -25,12 +25,13 @@ export class WorkOrderService {
     return workOrder.toObject();
   }
 
-  async findAll(organizationId: string, query: QueryWorkOrderDto) {
+  async findAll(organizationId: string, actor: JwtUser, query: QueryWorkOrderDto) {
     const { page = 1, limit = 20, propertyId, assignedTo, status, fromDate, toDate } = query;
-    const filter: Record<string, unknown> = { organizationId };
+    const filter: Record<string, unknown> =
+      actor.role === UserRole.WORKER ? { assignedTo: actor.id } : { organizationId };
 
     if (propertyId) filter.propertyId = propertyId;
-    if (assignedTo) filter.assignedTo = assignedTo;
+    if (assignedTo && actor.role !== UserRole.WORKER) filter.assignedTo = assignedTo;
     if (status) filter.status = status;
     if (fromDate || toDate) {
       filter.createdAt = {};
@@ -52,10 +53,10 @@ export class WorkOrderService {
   }
 
   async findById(organizationId: string, actor: JwtUser, id: string) {
-    const filter: Record<string, unknown> = { _id: id, organizationId };
-    if (actor.role === UserRole.WORKER) {
-      filter.assignedTo = actor.id;
-    }
+    const filter: Record<string, unknown> =
+      actor.role === UserRole.WORKER
+        ? { _id: id, assignedTo: actor.id }
+        : { _id: id, organizationId };
 
     const workOrder = await this.workOrderModel.findOne(filter).lean();
     if (!workOrder) throw new NotFoundException('Work order not found');
@@ -63,10 +64,10 @@ export class WorkOrderService {
   }
 
   async update(organizationId: string, actor: JwtUser, id: string, dto: UpdateWorkOrderDto) {
-    const filter: Record<string, unknown> = { _id: id, organizationId };
-    if (actor.role === UserRole.WORKER) {
-      filter.assignedTo = actor.id;
-    }
+    const filter: Record<string, unknown> =
+      actor.role === UserRole.WORKER
+        ? { _id: id, assignedTo: actor.id }
+        : { _id: id, organizationId };
 
     const updatePayload =
       actor.role === UserRole.WORKER

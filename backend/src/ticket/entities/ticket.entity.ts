@@ -131,6 +131,9 @@ export class Ticket {
   resolvedAt?: Date;
 
   @Prop({ type: Date, default: null })
+  scheduledDate?: Date;
+
+  @Prop({ type: Date, default: null })
   dueDate?: Date;
 
   @Prop({ type: Number, default: null })
@@ -138,6 +141,12 @@ export class Ticket {
 
   @Prop({ type: Number, default: null })
   actualCost?: number;
+
+  @Prop({ type: String, default: null })
+  completionNotes?: string;
+
+  @Prop({ type: [String], default: [] })
+  completionProof?: string[];
 
   @Prop({ type: String, required: true })
   createdBy: string;

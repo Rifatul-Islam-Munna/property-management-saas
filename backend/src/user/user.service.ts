@@ -14,6 +14,7 @@ import {
 import { Property, PropertyDocument } from 'src/property/entities/property.entity';
 import { CreateAssignmentRequestDto } from './dto/create-assignment-request.dto';
 import { CreateUserDto } from './dto/create-user.dto';
+import { LeaveWorkerAssignmentDto } from './dto/leave-worker-assignment.dto';
 import { LinkGlobalUserDto } from './dto/link-global-user.dto';
 import { LoginDto } from './dto/login.dto';
 import { PublicSignupDto } from './dto/public-signup.dto';
@@ -345,6 +346,76 @@ export class UserService {
 
     await request.save();
     return (await this.enrichAssignmentRequests([request.toObject()]))[0];
+  }
+
+  async leaveWorkerAssignment(
+    actor: JwtUser,
+    dto: LeaveWorkerAssignmentDto,
+  ): Promise<{ left: boolean; user: UserResponse }> {
+    if (actor.role !== UserRole.WORKER) {
+      throw new BadRequestException('Only worker can leave worker assignment');
+    }
+
+    const user = await this.userModel.findById(actor.id);
+    if (!user) {
+      throw new BadRequestException('User not found');
+    }
+
+    const ownerUserId = dto.ownerUserId ?? user.activeOwnerId ?? user.ownerIds?.[0];
+
+    if (!ownerUserId) {
+      throw new BadRequestException('No owner link found to leave');
+    }
+
+    if (!(user.ownerIds ?? []).includes(ownerUserId)) {
+      throw new BadRequestException('Worker not linked to that owner');
+    }
+
+    const acceptedRequests = await this.assignmentRequestModel
+      .find({
+        ownerUserId,
+        requestedRole: UserRole.WORKER,
+        status: AssignmentRequestStatus.ACCEPTED,
+        $or: [{ targetUserId: actor.id }, { requesterUserId: actor.id }],
+      })
+      .lean();
+
+    const propertyIdsToRemove = [
+      ...new Set(
+        acceptedRequests.flatMap((item) => item.propertyIds ?? []).filter(Boolean),
+      ),
+    ];
+
+    user.ownerIds = (user.ownerIds ?? []).filter((item) => item !== ownerUserId);
+    user.propertyIds = (user.propertyIds ?? []).filter(
+      (item) => !propertyIdsToRemove.includes(item),
+    );
+
+    if (user.activeOwnerId === ownerUserId) {
+      user.activeOwnerId = user.ownerIds[0] ?? null;
+    }
+
+    if (
+      user.activePropertyId &&
+      propertyIdsToRemove.includes(user.activePropertyId)
+    ) {
+      user.activePropertyId = user.propertyIds[0] ?? null;
+    }
+
+    if (!user.ownerIds.length) {
+      user.activeOwnerId = null;
+    }
+
+    if (!user.propertyIds.length) {
+      user.activePropertyId = null;
+    }
+
+    await user.save();
+
+    return {
+      left: true,
+      user: this.mapUser(user),
+    };
   }
 
   private async enrichAssignmentRequests(requests: any[]): Promise<any[]> {
