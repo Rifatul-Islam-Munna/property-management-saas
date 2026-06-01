@@ -1,4 +1,5 @@
 import { Geist_Mono, Manrope, Space_Grotesk } from "next/font/google"
+import "@xyflow/react/dist/style.css"
 
 import "./globals.css"
 import "@/bones/registry"

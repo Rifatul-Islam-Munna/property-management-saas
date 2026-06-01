@@ -7,25 +7,29 @@ import {
   LayoutDashboard,
   MessageSquare,
   Repeat,
+  Route,
   Ticket,
 } from "lucide-react"
 import { TenantOwnerShell } from "@/components/dashboard/tenant-owner-shell"
 
 function WorkerMobileNav() {
   const pathname = usePathname()
+  const isPathActive = (target: string) =>
+    pathname === target || pathname.startsWith(`${target}/`)
   const items = [
     { href: "/dashboard/worker", label: "Home", icon: LayoutDashboard },
     { href: "/dashboard/worker/tickets", label: "Tickets", icon: Ticket },
     { href: "/dashboard/worker/inspections", label: "Check", icon: ClipboardCheck },
+    { href: "/dashboard/worker/plan", label: "Plan", icon: Route },
     { href: "/dashboard/worker/recurring", label: "Repeat", icon: Repeat },
     { href: "/dashboard/worker/messages", label: "Inbox", icon: MessageSquare },
   ]
 
   return (
     <div className="fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white/95 px-3 py-2 backdrop-blur md:hidden">
-      <div className="mx-auto grid max-w-xl grid-cols-5 gap-2">
+      <div className="mx-auto grid max-w-xl grid-cols-6 gap-2">
         {items.map((item) => {
-          const active = pathname === item.href
+          const active = isPathActive(item.href)
           return (
             <Link
               key={item.href}

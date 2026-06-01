@@ -355,6 +355,21 @@ export class AiService {
       return null;
     }
 
+    const requestedRole = this.extractUserRoleFilter(normalized);
+    if (requestedRole) {
+      return {
+        toolCalls: [
+          {
+            name: 'platform_api_request',
+            arguments: {
+              method: 'GET',
+              path: '/user',
+            },
+          },
+        ],
+      };
+    }
+
     const entityRouteMap: Array<{
       match: RegExp;
       path: string;
@@ -435,18 +450,30 @@ export class AiService {
         : {};
     const payload = result.data;
     const normalized = originalMessage.toLowerCase();
+    const requestedRole = this.extractUserRoleFilter(normalized);
 
     if (this.isCountIntent(normalized)) {
       let count = 0;
 
       if (Array.isArray(payload)) {
-        count = payload.length;
+        count = requestedRole
+          ? payload.filter((item) => {
+              if (!item || typeof item !== 'object') return false;
+              return (item as Record<string, unknown>).role === requestedRole;
+            }).length
+          : payload.length;
       } else if (
         payload &&
         typeof payload === 'object' &&
         Array.isArray((payload as Record<string, unknown>).data)
       ) {
-        count = ((payload as Record<string, unknown>).data as unknown[]).length;
+        const rows = (payload as Record<string, unknown>).data as unknown[];
+        count = requestedRole
+          ? rows.filter((item) => {
+              if (!item || typeof item !== 'object') return false;
+              return (item as Record<string, unknown>).role === requestedRole;
+            }).length
+          : rows.length;
       } else if (
         payload &&
         typeof payload === 'object' &&
@@ -457,7 +484,9 @@ export class AiService {
 
       const path =
         typeof result.path === 'string' ? String(result.path).replace(/^\//, '') : 'items';
-      return `Count from ${path}: ${count}.`;
+      return requestedRole
+        ? `Count for ${requestedRole} from ${path}: ${count}.`
+        : `Count from ${path}: ${count}.`;
     }
 
     return JSON.stringify(result, null, 2);
@@ -470,6 +499,34 @@ export class AiService {
       /\bhow\b.*\bmnay\b/.test(normalized) ||
       /\bmnay\b/.test(normalized)
     );
+  }
+
+  private extractUserRoleFilter(normalized: string): UserRole | null {
+    if (/\btetentwoner\b|\btenant owner\b|\bowner team\b|\bco owner\b/.test(normalized)) {
+      return UserRole.TETENTWONER;
+    }
+
+    if (/\bworker(s)?\b|\btechnician(s)?\b/.test(normalized)) {
+      return UserRole.WORKER;
+    }
+
+    if (/\brenter(s)?\b|\btenant user(s)?\b/.test(normalized)) {
+      return UserRole.RENTER;
+    }
+
+    if (/\bguest(s)?\b/.test(normalized)) {
+      return UserRole.GUEST;
+    }
+
+    if (/\badmin(s)?\b/.test(normalized) && !/\bsuper admin(s)?\b/.test(normalized)) {
+      return UserRole.ADMIN;
+    }
+
+    if (/\bsuper admin(s)?\b/.test(normalized)) {
+      return UserRole.SUPER_ADMIN;
+    }
+
+    return null;
   }
 
   private async requestModelPlan(

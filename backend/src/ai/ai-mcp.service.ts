@@ -432,8 +432,16 @@ export class AiMcpService {
         notes: [
           'Admin MCP can call almost all platform endpoints.',
           'Avoid auth recursion routes like /ai/mcp and login/refresh/logout paths.',
+          'Canonical route names are singular: /user, /property, /unit, /tenant, /ticket.',
         ],
         allowedPrefixes: ['/organization', '/user', '/property', '/unit', '/tenant', '/ticket', '/technician', '/announcement', '/bill', '/finance-entry', '/inspection', '/recurring-maintenance', '/vendor', '/work-order', '/analytics', '/subscription'],
+        examples: [
+          { intent: 'count users', method: 'GET', path: '/user' },
+          { intent: 'count tickets', method: 'GET', path: '/ticket' },
+          { intent: 'list properties', method: 'GET', path: '/property' },
+          { intent: 'create property', method: 'POST', path: '/property' },
+          { intent: 'create tenant owner user', method: 'POST', path: '/user/create' },
+        ],
       };
     }
 
@@ -443,8 +451,16 @@ export class AiMcpService {
         notes: [
           'Tenant owner MCP can manage organization-scoped operations only.',
           'Write actions stay limited to owner routes already allowed by backend role guards.',
+          'Canonical route names are singular: /user, /property, /unit, /tenant, /ticket.',
         ],
         allowedPrefixes: ['/organization/my', '/user', '/property', '/unit', '/tenant', '/ticket', '/technician', '/announcement', '/bill', '/finance-entry', '/inspection', '/recurring-maintenance', '/vendor', '/work-order', '/analytics', '/messaging'],
+        examples: [
+          { intent: 'list owner users', method: 'GET', path: '/user' },
+          { intent: 'create property', method: 'POST', path: '/property' },
+          { intent: 'create unit', method: 'POST', path: '/unit' },
+          { intent: 'assign technician via ticket flow', method: 'PATCH', path: '/ticket/:id/assign/:assignedTo' },
+          { intent: 'create tenant record', method: 'POST', path: '/tenant' },
+        ],
       };
     }
 

@@ -1,3 +1,4 @@
+import type { Edge, Node, Viewport } from "@xyflow/react"
 import type { AuthUser } from "@/lib/types/auth"
 
 type AuditFields = {
@@ -448,4 +449,67 @@ export type UploadImageResponse = {
   fileName: string
   mimeType: string
   size: number
+}
+
+export type PlanEditorAccess = "view" | "edit"
+
+export type PlanEditorNodeKind =
+  | "rectangle"
+  | "square"
+  | "circle"
+  | "triangle"
+  | "diamond"
+  | "pen"
+
+export type PlanEditorNodeData = {
+  kind: PlanEditorNodeKind
+  label: string
+  width: number
+  height: number
+  fill: string
+  stroke: string
+  textColor: string
+  points?: number[]
+  editable?: boolean
+  onEdit?: (id: string) => void
+  onDelete?: (id: string) => void
+}
+
+export type PlanEditorNode = Node<PlanEditorNodeData>
+export type PlanEditorEdge = Edge
+
+export type PlanEditorShare = {
+  userId: string
+  fullName?: string | null
+  email?: string | null
+  access: PlanEditorAccess
+}
+
+export type PlanEditorDocument = {
+  _id: string
+  title: string
+  description?: string | null
+  organizationId: string
+  createdByUserId: string
+  createdByName: string
+  createdByRole: AuthUser["role"]
+  nodes: PlanEditorNode[]
+  edges: PlanEditorEdge[]
+  viewport: Viewport
+  sharedWith: PlanEditorShare[]
+  updatedByUserId?: string | null
+  updatedByName?: string | null
+  updatedByRole?: AuthUser["role"] | null
+  updatedAt?: string
+  createdAt?: string
+  isOwner?: boolean
+  canEdit?: boolean
+  myAccess?: PlanEditorAccess | null
+}
+
+export type PlanShareCandidate = {
+  id: string
+  fullName: string
+  email: string
+  role: AuthUser["role"]
 }

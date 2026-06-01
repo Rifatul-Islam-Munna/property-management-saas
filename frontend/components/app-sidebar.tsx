@@ -15,6 +15,7 @@ import {
   HomeIcon,
   LayoutDashboardIcon,
   RepeatIcon,
+  RouteIcon,
   Settings2Icon,
   ShieldIcon,
   TicketIcon,
@@ -36,6 +37,9 @@ import {
 } from "@/components/ui/sidebar"
 
 function buildNav(role: string | undefined, pathname: string) {
+  const isPathActive = (target: string) =>
+    pathname === target || pathname.startsWith(`${target}/`)
+
   if (role === "tetentwoner") {
     return {
       brand: "Tenant Owner",
@@ -75,6 +79,7 @@ function buildNav(role: string | undefined, pathname: string) {
           items: [
             { title: "Vendors", url: "/dashboard/tenant-owner/vendors", icon: <BriefcaseBusinessIcon /> },
             { title: "Tickets", url: "/dashboard/tenant-owner/tickets", icon: <CreditCardIcon /> },
+            { title: "Plan", url: "/dashboard/tenant-owner/plan", icon: <RouteIcon /> },
             { title: "Recurring", url: "/dashboard/tenant-owner/recurring", icon: <RepeatIcon /> },
             { title: "Inspections", url: "/dashboard/tenant-owner/inspections", icon: <FileChartColumnIcon /> },
             { title: "AI", url: "/dashboard/tenant-owner/ai", icon: <BotIcon /> },
@@ -82,7 +87,7 @@ function buildNav(role: string | undefined, pathname: string) {
         },
       ].map((section) => ({
         ...section,
-        items: section.items.map((item) => ({ ...item, isActive: pathname === item.url })),
+        items: section.items.map((item) => ({ ...item, isActive: isPathActive(item.url) })),
       })),
       navSecondary: [
         { title: "Settings", url: "/dashboard/tenant-owner/settings", icon: <Settings2Icon />, isActive: pathname === "/dashboard/tenant-owner/settings" },
@@ -97,7 +102,7 @@ function buildNav(role: string | undefined, pathname: string) {
         {
           label: "Overview",
           items: [
-            { title: "Overview", url: "/dashboard/admin", icon: <LayoutDashboardIcon />, isActive: pathname === "/dashboard/admin" },
+            { title: "Overview", url: "/dashboard/admin", icon: <LayoutDashboardIcon />, isActive: isPathActive("/dashboard/admin") },
           ],
         },
         {
@@ -120,7 +125,7 @@ function buildNav(role: string | undefined, pathname: string) {
         },
       ].map((section) => ({
         ...section,
-        items: section.items.map((item) => ({ ...item, isActive: pathname === item.url })),
+        items: section.items.map((item) => ({ ...item, isActive: isPathActive(item.url) })),
       })),
       navSecondary: [],
     }
@@ -133,16 +138,17 @@ function buildNav(role: string | undefined, pathname: string) {
         {
           label: "Workspace",
           items: [
-            { title: "Overview", url: "/dashboard/worker", icon: <LayoutDashboardIcon />, isActive: pathname === "/dashboard/worker" },
-            { title: "Tickets", url: "/dashboard/worker/tickets", icon: <TicketIcon />, isActive: pathname === "/dashboard/worker/tickets" },
-            { title: "Inspections", url: "/dashboard/worker/inspections", icon: <FileChartColumnIcon />, isActive: pathname === "/dashboard/worker/inspections" },
-            { title: "Recurring", url: "/dashboard/worker/recurring", icon: <RepeatIcon />, isActive: pathname === "/dashboard/worker/recurring" },
-            { title: "Messages", url: "/dashboard/worker/messages", icon: <FileTextIcon />, isActive: pathname === "/dashboard/worker/messages" },
+            { title: "Overview", url: "/dashboard/worker", icon: <LayoutDashboardIcon />, isActive: isPathActive("/dashboard/worker") },
+            { title: "Tickets", url: "/dashboard/worker/tickets", icon: <TicketIcon />, isActive: isPathActive("/dashboard/worker/tickets") },
+            { title: "Inspections", url: "/dashboard/worker/inspections", icon: <FileChartColumnIcon />, isActive: isPathActive("/dashboard/worker/inspections") },
+            { title: "Recurring", url: "/dashboard/worker/recurring", icon: <RepeatIcon />, isActive: isPathActive("/dashboard/worker/recurring") },
+            { title: "Messages", url: "/dashboard/worker/messages", icon: <FileTextIcon />, isActive: isPathActive("/dashboard/worker/messages") },
+            { title: "Plan", url: "/dashboard/worker/plan", icon: <RouteIcon />, isActive: isPathActive("/dashboard/worker/plan") },
           ],
         },
       ],
       navSecondary: [
-        { title: "Settings", url: "/dashboard/worker/settings", icon: <Settings2Icon />, isActive: pathname === "/dashboard/worker/settings" },
+      { title: "Settings", url: "/dashboard/worker/settings", icon: <Settings2Icon />, isActive: isPathActive("/dashboard/worker/settings") },
       ],
     }
   }
@@ -184,6 +190,7 @@ function buildNav(role: string | undefined, pathname: string) {
         items: [
           { title: "Vendors", url: "/dashboard/resident/vendors", icon: <BriefcaseBusinessIcon /> },
           { title: "Tickets", url: "/dashboard/resident/tickets", icon: <CreditCardIcon /> },
+          { title: "Plan", url: "/dashboard/resident/plan", icon: <RouteIcon /> },
           { title: "Recurring", url: "/dashboard/resident/recurring", icon: <RepeatIcon /> },
           { title: "Inspections", url: "/dashboard/resident/inspections", icon: <FileChartColumnIcon /> },
           { title: "AI", url: "/dashboard/resident/ai", icon: <BotIcon /> },
@@ -191,10 +198,10 @@ function buildNav(role: string | undefined, pathname: string) {
       },
     ].map((section) => ({
       ...section,
-      items: section.items.map((item) => ({ ...item, isActive: pathname === item.url })),
+      items: section.items.map((item) => ({ ...item, isActive: isPathActive(item.url) })),
     })),
     navSecondary: [
-      { title: "Settings", url: "/dashboard/resident/settings", icon: <Settings2Icon />, isActive: pathname === "/dashboard/resident/settings" },
+      { title: "Settings", url: "/dashboard/resident/settings", icon: <Settings2Icon />, isActive: isPathActive("/dashboard/resident/settings") },
     ],
   }
 }

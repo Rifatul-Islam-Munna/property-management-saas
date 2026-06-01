@@ -15,6 +15,7 @@ import { BillModule } from './bill/bill.module';
 import { ImageModule } from './image/image.module';
 import { MessagingModule } from './messaging/messaging.module';
 import { OrganizationModule } from './organization/organization.module';
+import { PlanDocModule } from './plan-doc/plan-doc.module';
 import { PropertyModule } from './property/property.module';
 import { RecurringMaintenanceModule } from './recurring-maintenance/recurring-maintenance.module';
 import { SubscriptionModule } from './subscription/subscription.module';
@@ -57,6 +58,7 @@ import { WorkOrderModule } from './work-order/work-order.module';
     InspectionModule,
     MessagingModule,
     OrganizationModule,
+    PlanDocModule,
     PropertyModule,
     RecurringMaintenanceModule,
     SubscriptionModule,
