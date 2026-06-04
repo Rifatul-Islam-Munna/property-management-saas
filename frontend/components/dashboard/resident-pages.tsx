@@ -32,6 +32,7 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { UploadCollectionField } from "@/components/shared/upload-collection-field"
+import { RichTextContent } from "@/components/shared/rich-text-editor"
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Textarea } from "@/components/ui/textarea"
@@ -609,7 +610,7 @@ function ResidentNoticesList() {
                 <Badge variant="outline">{notice.type ?? "notice"}</Badge>
                 <Badge variant="secondary">{notice.priority ?? "normal"}</Badge>
               </div>
-              <p className="mt-2 text-sm text-slate-600">{notice.content}</p>
+              <RichTextContent value={notice.content} className="mt-2" />
               <p className="mt-3 text-xs text-slate-500">{formatDate(notice.createdAt)}</p>
             </div>
           )) : (
@@ -644,7 +645,8 @@ function ResidentDocumentsList() {
         <CardContent className="space-y-3">
           {documents.length ? documents.map((item) => (
             <div key={item._id} className="rounded-xl border p-4">
-              <p className="font-medium text-slate-950">{item.content ?? "Shared document"}</p>
+              <p className="font-medium text-slate-950">{item.title ?? "Shared document"}</p>
+              <RichTextContent value={item.content ?? "Shared document"} className="mt-2" />
               <p className="mt-1 text-xs text-slate-500">{formatDate(item.createdAt)}</p>
               <div className="mt-3 flex flex-wrap gap-2">
                 {(item.attachments ?? []).map((attachment) => (

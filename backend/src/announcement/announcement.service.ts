@@ -19,7 +19,17 @@ export class AnnouncementService {
     private readonly announcementModel: Model<AnnouncementDocument>,
   ) {}
 
+  private normalizeAudience(value?: string | null) {
+    if (value === 'roles') return NoticeAudience.ROLE_BASED;
+    if (value === 'users') return NoticeAudience.USER_BASED;
+    if (value === 'role_based' || value === 'user_based' || value === 'all') {
+      return value as NoticeAudience;
+    }
+    return undefined;
+  }
+
   async create(organizationId: string, actor: JwtUser, dto: CreateAnnouncementDto) {
+    const audience = this.normalizeAudience(dto.audience);
     const announcement = await this.announcementModel.create({
       ...dto,
       organizationId,
@@ -27,7 +37,7 @@ export class AnnouncementService {
       updatedByUserId: actor.id,
       updatedByName: actor.fullName,
       updatedByRole: actor.role,
-      audience: dto.audience ?? NoticeAudience.ALL,
+      audience: audience ?? NoticeAudience.ALL,
       targetRoles: dto.targetRoles ?? [],
       targetUserIds: dto.targetUserIds ?? [],
       attachments: dto.attachments ?? [],
@@ -51,8 +61,8 @@ export class AnnouncementService {
 
     if (propertyId) filter.propertyId = propertyId;
     if (type) filter.type = type;
-    if (audience) filter.audience = audience;
-    if (targetRole) filter.targetRoles = targetRole;
+    if (audience) filter.audience = this.normalizeAudience(audience);
+    if (targetRole) filter.targetRoles = { $in: [targetRole] };
     if (isActive !== undefined) filter.isActive = isActive;
     if (fromDate || toDate) {
       filter.createdAt = {};
@@ -63,8 +73,8 @@ export class AnnouncementService {
     if (actor && !['super_admin', 'admin', 'tetentwoner'].includes(actor.role)) {
       filter.$or = [
         { audience: NoticeAudience.ALL },
-        { targetRoles: actor.role },
-        { targetUserIds: actor.id },
+        { audience: NoticeAudience.ROLE_BASED, targetRoles: { $in: [actor.role] } },
+        { audience: NoticeAudience.USER_BASED, targetUserIds: actor.id },
       ];
     }
 
@@ -86,6 +96,7 @@ export class AnnouncementService {
     actor: JwtUser,
     dto: CreateAnnouncementDto,
   ) {
+    const audience = this.normalizeAudience(dto.audience);
     const notice = await this.announcementModel.create({
       ...dto,
       organizationId,
@@ -94,8 +105,13 @@ export class AnnouncementService {
       updatedByName: actor.fullName,
       updatedByRole: actor.role,
       type: AnnouncementType.NOTICE,
-      audience: dto.audience ?? NoticeAudience.ROLE_BASED,
-      targetRoles: dto.targetRoles?.length ? dto.targetRoles : ['renter', 'guest'],
+      audience: audience ?? NoticeAudience.ROLE_BASED,
+      targetRoles:
+        (audience ?? NoticeAudience.ROLE_BASED) === NoticeAudience.ROLE_BASED
+          ? dto.targetRoles?.length
+            ? dto.targetRoles
+            : ['renter', 'guest']
+          : [],
       targetUserIds: dto.targetUserIds ?? [],
       attachments: dto.attachments ?? [],
     });

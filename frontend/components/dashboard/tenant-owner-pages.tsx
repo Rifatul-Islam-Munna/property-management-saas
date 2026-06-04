@@ -30,6 +30,7 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { UploadCollectionField } from "@/components/shared/upload-collection-field"
+import { RichTextContent, RichTextEditor } from "@/components/shared/rich-text-editor"
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import {
@@ -227,6 +228,31 @@ const STRIPE_CURRENCY_OPTIONS = [
   { value: "gbp", label: "GBP" },
   { value: "cad", label: "CAD" },
   { value: "aud", label: "AUD" },
+]
+
+const DOCUMENT_TEMPLATE_VARIABLES = [
+  "tenant_full_name",
+  "tenant_email",
+  "tenant_phone",
+  "tenant_kind",
+  "tenant_address",
+  "tenant_lease_start",
+  "tenant_lease_end",
+  "tenant_monthly_rent",
+  "tenant_security_deposit",
+  "tenant_guest_fee",
+  "property_name",
+  "property_type",
+  "property_address",
+  "property_contact_email",
+  "property_contact_phone",
+  "unit_number",
+  "unit_floor",
+  "unit_type",
+  "owner_name",
+  "owner_email",
+  "current_date",
+  "current_year",
 ]
 
 function OwnerPageHero({
@@ -2890,7 +2916,7 @@ export function TenantOwnerNoticesPage() {
     propertyId: "",
     title: "",
     content: "",
-    audience: "roles",
+    audience: "role_based",
     targetRoles: ["renter", "guest"] as Array<"worker" | "renter" | "guest">,
   })
 
@@ -2919,9 +2945,9 @@ export function TenantOwnerNoticesPage() {
                     propertyId: form.propertyId || undefined,
                     title: form.title,
                     content: form.content,
-                    audience: form.audience as "all" | "roles" | "users",
-                    targetRoles: form.audience === "roles" ? form.targetRoles : undefined,
-                    targetUserIds: form.audience === "users" ? selectedUsers : undefined,
+                    audience: form.audience as "all" | "role_based" | "user_based",
+                    targetRoles: form.audience === "role_based" ? form.targetRoles : undefined,
+                    targetUserIds: form.audience === "user_based" ? selectedUsers : undefined,
                     isActive: true,
                   },
                   {
@@ -2930,7 +2956,7 @@ export function TenantOwnerNoticesPage() {
                         propertyId: "",
                         title: "",
                         content: "",
-                        audience: "roles",
+                        audience: "role_based",
                         targetRoles: ["renter", "guest"],
                       })
                       setSelectedUsers([])
@@ -2943,9 +2969,9 @@ export function TenantOwnerNoticesPage() {
               <FieldGroup>
                 <Field><FieldLabel>Property</FieldLabel><Select value={form.propertyId} onValueChange={(value) => setForm((current) => ({ ...current, propertyId: value ?? "" }))}><SelectTrigger className="w-full"><SelectValue placeholder="Optional property" /></SelectTrigger><SelectContent><SelectGroup>{propertyList.map((property) => <SelectItem key={property._id} value={property._id}>{property.name}</SelectItem>)}</SelectGroup></SelectContent></Select></Field>
                 <Field><FieldLabel>Title</FieldLabel><Input value={form.title} onChange={(event) => setForm((current) => ({ ...current, title: event.target.value ?? "" }))} /></Field>
-                <Field><FieldLabel>Content</FieldLabel><Textarea value={form.content} onChange={(event) => setForm((current) => ({ ...current, content: event.target.value ?? "" }))} /></Field>
-                <Field><FieldLabel>Audience</FieldLabel><Select value={form.audience} onValueChange={(value) => setForm((current) => ({ ...current, audience: value ?? "roles" }))}><SelectTrigger className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectGroup>{["all", "roles", "users"].map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}</SelectGroup></SelectContent></Select></Field>
-                {form.audience === "roles" ? (
+                <Field><FieldLabel>Content</FieldLabel><RichTextEditor value={form.content} onChange={(value) => setForm((current) => ({ ...current, content: value }))} placeholder="Write notice with rich text" minHeightClassName="min-h-48" /></Field>
+                <Field><FieldLabel>Audience</FieldLabel><Select value={form.audience} onValueChange={(value) => setForm((current) => ({ ...current, audience: value ?? "role_based" }))}><SelectTrigger className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectGroup><SelectItem value="all">all</SelectItem><SelectItem value="role_based">roles</SelectItem><SelectItem value="user_based">users</SelectItem></SelectGroup></SelectContent></Select></Field>
+                {form.audience === "role_based" ? (
                   <Field>
                     <FieldLabel>Target roles</FieldLabel>
                     <div className="space-y-3 rounded-xl border p-4">
@@ -2968,7 +2994,7 @@ export function TenantOwnerNoticesPage() {
                     </div>
                   </Field>
                 ) : null}
-                {form.audience === "users" ? (
+                {form.audience === "user_based" ? (
                   <Field>
                     <FieldLabel>Target users</FieldLabel>
                     <div className="space-y-3 rounded-xl border p-4">
@@ -3008,7 +3034,7 @@ export function TenantOwnerNoticesPage() {
                     <p className="font-medium text-slate-950">{notice.title}</p>
                     <Badge variant="outline">{notice.audience ?? "general"}</Badge>
                   </div>
-                  <p className="mt-2 text-sm leading-6 text-slate-600">{notice.content}</p>
+                  <RichTextContent value={notice.content} className="mt-2 leading-6" />
                 </div>
               )) : (
                 <Empty>
@@ -3037,6 +3063,8 @@ export function TenantOwnerDocumentsPage() {
   const [form, setForm] = useState({
     title: "",
     note: "",
+    htmlContent: "",
+    useTemplateVariables: true,
   })
   const userList = Array.isArray(users.data) ? users.data : []
   const messageList = Array.isArray(messages.data) ? messages.data : []
@@ -3054,21 +3082,51 @@ export function TenantOwnerDocumentsPage() {
           open={isCreateOpen}
           onOpenChange={setIsCreateOpen}
           title="Send document"
-          description="Upload from device, pick recipients, then send."
+          description="Upload template doc/text/html or write rich document here. Variables auto-replace per tenant."
           triggerLabel="Send document"
         >
           <div className="space-y-4">
             <FieldGroup>
               <Field><FieldLabel>Title (Optional)</FieldLabel><Input value={form.title} onChange={(event) => setForm((current) => ({ ...current, title: event.target.value ?? "" }))} /></Field>
-              <Field><FieldLabel>Note (Optional)</FieldLabel><Textarea value={form.note} onChange={(event) => setForm((current) => ({ ...current, note: event.target.value ?? "" }))} /></Field>
+              <Field><FieldLabel>Note (Optional)</FieldLabel><RichTextEditor value={form.note} onChange={(value) => setForm((current) => ({ ...current, note: value }))} placeholder="Short rich note sent with document" minHeightClassName="min-h-32" /></Field>
+              <Field><FieldLabel>Rich document body (Optional)</FieldLabel><RichTextEditor value={form.htmlContent} onChange={(value) => setForm((current) => ({ ...current, htmlContent: value }))} placeholder="Write HTML/rich document here if you do not want upload-only mode" minHeightClassName="min-h-56" /></Field>
               <UploadCollectionField
-                label="Document upload"
-                accept=".pdf,.doc,.docx,.xls,.xlsx,.txt,image/*"
+                label="Template / file upload"
+                accept=".pdf,.doc,.docx,.xls,.xlsx,.txt,.html,image/*"
                 kind="file"
                 values={documentUrls}
                 onChange={setDocumentUrls}
-                optional={false}
+                optional={true}
               />
+              <Field>
+                <FieldLabel>Template variables</FieldLabel>
+                <div className="rounded-xl border p-4 text-sm text-slate-700">
+                  <label className="mb-3 flex items-center gap-3">
+                    <Checkbox
+                      checked={form.useTemplateVariables}
+                      onCheckedChange={(checked) => setForm((current) => ({ ...current, useTemplateVariables: Boolean(checked) }))}
+                    />
+                    Auto replace variables in uploaded template, note, and rich document
+                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    {DOCUMENT_TEMPLATE_VARIABLES.map((item) => (
+                      <button
+                        key={item}
+                        type="button"
+                        className="rounded-full border px-3 py-1 text-xs text-slate-700"
+                        onClick={() =>
+                          setForm((current) => ({
+                            ...current,
+                            htmlContent: `${current.htmlContent}${current.htmlContent ? " " : ""}{{${item}}}`,
+                          }))
+                        }
+                      >
+                        {`{{${item}}}`}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </Field>
               <Field>
                 <FieldLabel>Select recipients</FieldLabel>
                 <div className="space-y-3 rounded-xl border p-4">
@@ -3090,20 +3148,22 @@ export function TenantOwnerDocumentsPage() {
             </FieldGroup>
             <Button
               type="button"
-              disabled={sendDocument.isPending || !selectedUsers.length || !documentUrls[0]}
+              disabled={sendDocument.isPending || !selectedUsers.length || (!documentUrls[0] && !form.htmlContent.trim())}
               onClick={() =>
                 sendDocument.mutate(
                   {
                     recipientIds: selectedUsers,
-                    documentUrl: documentUrls[0] ?? "",
+                    documentUrl: documentUrls[0] || undefined,
                     title: form.title || undefined,
                     note: form.note || undefined,
+                    htmlContent: form.htmlContent || undefined,
+                    useTemplateVariables: form.useTemplateVariables,
                   },
                   {
                     onSuccess: () => {
                       setSelectedUsers([])
                       setDocumentUrls([])
-                      setForm({ title: "", note: "" })
+                      setForm({ title: "", note: "", htmlContent: "", useTemplateVariables: true })
                       setIsCreateOpen(false)
                     },
                   }
@@ -3126,7 +3186,14 @@ export function TenantOwnerDocumentsPage() {
             {messageList.length ? messageList.slice(0, 12).map((message) => (
               <div key={message._id} className="rounded-xl border p-4">
                 <p className="font-medium text-slate-950">{message.title ?? "Document"}</p>
-                <p className="mt-1 text-sm text-slate-600">{message.content ?? "Sent document"}</p>
+                <RichTextContent value={message.content ?? "Sent document"} className="mt-1" />
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {(message.attachments ?? []).map((attachment) => (
+                    <a key={attachment} href={attachment} target="_blank" rel="noreferrer" className="rounded-lg border px-3 py-2 text-sm text-blue-700">
+                      Open file
+                    </a>
+                  ))}
+                </div>
               </div>
             )) : (
               <Empty>

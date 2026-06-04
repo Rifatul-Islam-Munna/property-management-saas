@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import type { JwtUser } from 'src/lib/auth.guard';
+import { DocumentTemplateService } from './document-template.service';
 import { QueryMessageDto } from './dto/query-message.dto';
 import { SendDocumentDto } from './dto/send-document.dto';
 import { SendMessageDto } from './dto/send-message.dto';
@@ -14,6 +15,7 @@ export class MessagingService {
     @InjectModel(Message.name)
     private readonly messageModel: Model<MessageDocument>,
     private readonly messagingGateway: MessagingGateway,
+    private readonly documentTemplateService: DocumentTemplateService,
   ) {}
 
   async sendMessage(organizationId: string, actor: JwtUser, dto: SendMessageDto): Promise<any> {
@@ -71,6 +73,32 @@ export class MessagingService {
     const docs: any[] = [];
 
     for (const recipientId of dto.recipientIds) {
+      const variables = dto.useTemplateVariables
+        ? await this.documentTemplateService.buildVariables(
+            organizationId,
+            recipientId,
+            {
+              fullName: actor.fullName,
+              email: actor.email,
+            },
+          )
+        : {};
+      const resolvedTitle = dto.useTemplateVariables
+        ? this.documentTemplateService.replaceTextVariables(dto.title, variables)
+        : dto.title;
+      const resolvedNote = dto.useTemplateVariables
+        ? this.documentTemplateService.replaceTextVariables(dto.note, variables)
+        : dto.note;
+      const renderedDocumentUrl =
+        dto.useTemplateVariables && (dto.documentUrl || dto.htmlContent)
+          ? await this.documentTemplateService.renderTemplateToFile({
+              sourceUrl: dto.documentUrl,
+              htmlContent: dto.htmlContent,
+              variables,
+              recipientId,
+              title: resolvedTitle ?? dto.title,
+            })
+          : dto.documentUrl ?? null;
       const roomId = [actor.id, recipientId].sort().join(':');
       const message = await this.messageModel.create({
         organizationId,
@@ -80,8 +108,9 @@ export class MessagingService {
         recipientIds: [recipientId],
         senderName: actor.email,
         kind: MessageKind.DOCUMENT,
-        content: dto.note ?? dto.title ?? 'Document shared',
-        attachments: [dto.documentUrl],
+        title: resolvedTitle ?? dto.title ?? null,
+        content: resolvedNote ?? resolvedTitle ?? dto.note ?? dto.title ?? 'Document shared',
+        attachments: renderedDocumentUrl ? [renderedDocumentUrl] : [],
         readBy: [actor.id],
       });
 

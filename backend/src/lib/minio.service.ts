@@ -118,6 +118,38 @@ export class MinioService implements OnModuleInit {
     }
   }
 
+  async uploadBuffer(
+    buffer: Buffer,
+    fileName: string,
+    mimeType: string,
+  ) {
+    if (!this.s3) {
+      throw new HttpException('MinIO not configured', HttpStatus.BAD_REQUEST);
+    }
+
+    const bucketName =
+      this.configService.get<string>('MINIO_BUCKET') ?? 'property-public-bucket';
+
+    try {
+      await this.s3.send(
+        new PutObjectCommand({
+          Bucket: bucketName,
+          Key: fileName,
+          Body: buffer,
+          ContentType: mimeType,
+        }),
+      );
+
+      return `${this.configService.get('MINIO_URL')}/${bucketName}/${fileName}`;
+    } catch (err) {
+      this.logger.error('Error uploading buffer', (err as Error)?.stack);
+      throw new HttpException(
+        'Failed to upload file',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
   async deleteService(fileName: string) {
     if (!this.s3) {
       throw new HttpException('MinIO not configured', HttpStatus.BAD_REQUEST);

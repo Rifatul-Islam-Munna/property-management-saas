@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsArray, IsOptional, IsString } from 'class-validator';
+import { IsArray, IsBoolean, IsOptional, IsString } from 'class-validator';
 
 export class SendDocumentDto {
   @ApiProperty({ type: [String] })
@@ -7,9 +7,10 @@ export class SendDocumentDto {
   @IsString({ each: true })
   recipientIds: string[];
 
-  @ApiProperty()
+  @ApiPropertyOptional()
+  @IsOptional()
   @IsString()
-  documentUrl: string;
+  documentUrl?: string;
 
   @ApiPropertyOptional()
   @IsOptional()
@@ -20,4 +21,14 @@ export class SendDocumentDto {
   @IsOptional()
   @IsString()
   note?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  htmlContent?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  useTemplateVariables?: boolean;
 }

@@ -36,6 +36,9 @@ export class Message {
   @Prop({ type: String, enum: MessageKind, default: MessageKind.TEXT })
   kind: MessageKind;
 
+  @Prop({ type: String, default: null })
+  title?: string | null;
+
   @Prop({ type: String, required: true })
   content: string;
 

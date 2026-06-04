@@ -291,7 +291,11 @@ export function TenantOwnerControlCenter() {
                 propertyId: noticeForm.propertyId || undefined,
                 title: noticeForm.title,
                 content: noticeForm.content,
-                audience: noticeForm.audience as "all" | "roles" | "users",
+                audience: (noticeForm.audience === "roles"
+                  ? "role_based"
+                  : noticeForm.audience === "users"
+                    ? "user_based"
+                    : "all") as "all" | "role_based" | "user_based",
                 targetRoles: splitCsv(noticeForm.targetRoles) as Array<"worker" | "renter" | "guest">,
                 targetUserIds: splitCsv(noticeForm.targetUserIds),
                 attachments: splitCsv(noticeForm.attachments),

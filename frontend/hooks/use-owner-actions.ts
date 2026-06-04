@@ -137,7 +137,7 @@ type NoticePayload = {
   propertyId?: string
   title: string
   content: string
-  audience?: "all" | "roles" | "users"
+  audience?: "all" | "role_based" | "user_based"
   targetRoles?: Array<"worker" | "renter" | "guest">
   targetUserIds?: string[]
   attachments?: string[]
@@ -146,9 +146,11 @@ type NoticePayload = {
 
 type OwnerDocumentPayload = {
   recipientIds: string[]
-  documentUrl: string
+  documentUrl?: string
   title?: string
   note?: string
+  htmlContent?: string
+  useTemplateVariables?: boolean
 }
 
 type OwnerTicketPayload = {
