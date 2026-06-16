@@ -11,9 +11,11 @@ import { UpdateRecurringMaintenanceDto } from './dto/update-recurring-maintenanc
 import {
   RecurringMaintenance,
   RecurringMaintenanceDocument,
+  ApprovalStatus,
   RecurringReportStatus,
 } from './entities/recurring-maintenance.entity';
 import { UserRole } from 'src/user/entities/user.entity';
+import { NotificationService } from 'src/notification/notification.service';
 
 @Injectable()
 export class RecurringMaintenanceService {
@@ -24,6 +26,7 @@ export class RecurringMaintenanceService {
     private readonly propertyModel: Model<PropertyDocument>,
     @InjectModel(Unit.name)
     private readonly unitModel: Model<UnitDocument>,
+    private readonly notificationService: NotificationService,
   ) {}
 
   async create(organizationId: string, actor: JwtUser, dto: CreateRecurringMaintenanceDto): Promise<any> {
@@ -36,7 +39,9 @@ export class RecurringMaintenanceService {
       updatedByRole: actor.role,
       runHistory: [],
     });
-    return this.enrichRecurring(item.toObject());
+    const data = item.toObject();
+    await this.notificationService.notifyRecurringMaintenanceAssigned(organizationId, data);
+    return this.enrichRecurring(data);
   }
 
   async findAll(organizationId: string, actor: JwtUser, query: QueryRecurringMaintenanceDto): Promise<any> {
@@ -76,6 +81,10 @@ export class RecurringMaintenanceService {
     if (dto.paymentStatus !== undefined) {
       updatePayload.paidAt = dto.paymentStatus === 'paid' ? new Date() : null;
     }
+    if (dto.approvalStatus === ApprovalStatus.APPROVED) {
+      updatePayload.approvedBy = actor.id;
+      updatePayload.approvedAt = new Date();
+    }
     const item = await this.recurringModel.findOneAndUpdate(
       { _id: id, organizationId },
       {
@@ -87,6 +96,9 @@ export class RecurringMaintenanceService {
       { new: true },
     );
     if (!item) throw new NotFoundException('Recurring maintenance not found');
+    if (dto.assignedTo) {
+      await this.notificationService.notifyRecurringMaintenanceAssigned(organizationId, item.toObject());
+    }
     return this.enrichRecurring(item.toObject());
   }
 
@@ -125,6 +137,10 @@ export class RecurringMaintenanceService {
     if (dto.paymentStatus !== undefined) {
       item.paymentStatus = dto.paymentStatus as 'unpaid' | 'paid';
       item.paidAt = dto.paymentStatus === 'paid' ? new Date() : null;
+    }
+    if (dto.status === RecurringReportStatus.COMPLETED || dto.actualCost !== undefined || dto.files?.length) {
+      item.approvalStatus = ApprovalStatus.PENDING;
+      item.approvalRequestedAt = new Date();
     }
     item.updatedByUserId = actor.id;
     item.updatedByName = actor.fullName;

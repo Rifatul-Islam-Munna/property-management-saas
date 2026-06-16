@@ -15,6 +15,7 @@ import type {
 type WorkerWorkOrderPayload = {
   id: string
   status?: string
+  actualCost?: number
   completionNotes?: string
   completionProof?: string[]
 }

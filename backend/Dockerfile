@@ -24,5 +24,5 @@ COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/package.json ./package.json
 USER nestjs
 EXPOSE 80
-HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 CMD node -e "fetch('http://127.0.0.1:80').then((res) => process.exit(res.ok ? 0 : 1)).catch(() => process.exit(1))"
+
 CMD ["node", "dist/main.js"]

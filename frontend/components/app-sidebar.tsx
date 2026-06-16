@@ -55,6 +55,7 @@ function buildNav(role: string | undefined, pathname: string) {
           items: [
             { title: "Properties", url: "/dashboard/tenant-owner/properties", icon: <Building2Icon /> },
             { title: "Units", url: "/dashboard/tenant-owner/units", icon: <HomeIcon /> },
+            { title: "Health", url: "/dashboard/tenant-owner/health", icon: <FileChartColumnIcon /> },
           ],
         },
         {
@@ -63,7 +64,9 @@ function buildNav(role: string | undefined, pathname: string) {
             { title: "Users", url: "/dashboard/tenant-owner/users", icon: <UsersIcon /> },
             { title: "Owner Team", url: "/dashboard/tenant-owner/team", icon: <ShieldIcon /> },
             { title: "Tenants", url: "/dashboard/tenant-owner/tenants", icon: <ShieldIcon /> },
+            { title: "Leases", url: "/dashboard/tenant-owner/leases", icon: <FileTextIcon /> },
             { title: "Billing", url: "/dashboard/tenant-owner/billing", icon: <CreditCardIcon /> },
+            { title: "Finance", url: "/dashboard/tenant-owner/finance", icon: <FileChartColumnIcon /> },
             { title: "Technicians", url: "/dashboard/tenant-owner/technicians", icon: <WrenchIcon /> },
           ],
         },
@@ -71,6 +74,7 @@ function buildNav(role: string | undefined, pathname: string) {
           label: "Communication",
           items: [
             { title: "Notices", url: "/dashboard/tenant-owner/notices", icon: <BellIcon /> },
+            { title: "Notifications", url: "/dashboard/tenant-owner/notifications", icon: <BellIcon /> },
             { title: "Documents", url: "/dashboard/tenant-owner/documents", icon: <FileTextIcon /> },
           ],
         },
@@ -78,7 +82,10 @@ function buildNav(role: string | undefined, pathname: string) {
           label: "Operations",
           items: [
             { title: "Vendors", url: "/dashboard/tenant-owner/vendors", icon: <BriefcaseBusinessIcon /> },
+            { title: "Quotes", url: "/dashboard/tenant-owner/quotes", icon: <FileTextIcon /> },
+            { title: "Assets", url: "/dashboard/tenant-owner/assets", icon: <WrenchIcon /> },
             { title: "Tickets", url: "/dashboard/tenant-owner/tickets", icon: <CreditCardIcon /> },
+            { title: "Reports", url: "/dashboard/tenant-owner/reports", icon: <FileChartColumnIcon /> },
             { title: "Plan", url: "/dashboard/tenant-owner/plan", icon: <RouteIcon /> },
             { title: "Recurring", url: "/dashboard/tenant-owner/recurring", icon: <RepeatIcon /> },
             { title: "Inspections", url: "/dashboard/tenant-owner/inspections", icon: <FileChartColumnIcon /> },

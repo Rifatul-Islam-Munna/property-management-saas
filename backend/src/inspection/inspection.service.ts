@@ -8,8 +8,9 @@ import { CreateInspectionDto } from './dto/create-inspection.dto';
 import { QueryInspectionDto } from './dto/query-inspection.dto';
 import { ReportInspectionDto } from './dto/report-inspection.dto';
 import { UpdateInspectionDto } from './dto/update-inspection.dto';
-import { Inspection, InspectionDocument } from './entities/inspection.entity';
+import { ApprovalStatus, Inspection, InspectionDocument } from './entities/inspection.entity';
 import { UserRole } from 'src/user/entities/user.entity';
+import { NotificationService } from 'src/notification/notification.service';
 
 @Injectable()
 export class InspectionService {
@@ -20,6 +21,7 @@ export class InspectionService {
     private readonly propertyModel: Model<PropertyDocument>,
     @InjectModel(Unit.name)
     private readonly unitModel: Model<UnitDocument>,
+    private readonly notificationService: NotificationService,
   ) {}
 
   async create(organizationId: string, actor: JwtUser, dto: CreateInspectionDto): Promise<any> {
@@ -31,7 +33,9 @@ export class InspectionService {
       updatedByName: actor.fullName,
       updatedByRole: actor.role,
     });
-    return this.enrichInspection(inspection.toObject());
+    const data = inspection.toObject();
+    await this.notificationService.notifyInspectionAssigned(organizationId, data);
+    return this.enrichInspection(data);
   }
 
   async findAll(organizationId: string, actor: JwtUser, query: QueryInspectionDto): Promise<any> {
@@ -71,6 +75,12 @@ export class InspectionService {
     if (dto.completed) {
       updatePayload.completedAt = new Date();
     }
+    if (dto.approvalStatus === ApprovalStatus.APPROVED) {
+      updatePayload.completed = true;
+      updatePayload.completedAt = new Date();
+      updatePayload.approvedBy = actor.id;
+      updatePayload.approvedAt = new Date();
+    }
     if (dto.paymentStatus !== undefined) {
       updatePayload.paidAt = dto.paymentStatus === 'paid' ? new Date() : null;
     }
@@ -85,6 +95,9 @@ export class InspectionService {
       { new: true },
     );
     if (!inspection) throw new NotFoundException('Inspection not found');
+    if (dto.assignedTo) {
+      await this.notificationService.notifyInspectionAssigned(organizationId, inspection.toObject());
+    }
     return this.enrichInspection(inspection.toObject());
   }
 
@@ -130,6 +143,10 @@ export class InspectionService {
     if (dto.completed !== undefined) {
       inspection.completed = dto.completed;
       inspection.completedAt = dto.completed ? new Date() : null;
+    }
+    if (dto.completed || dto.actualCost !== undefined || dto.workerReportFiles?.length) {
+      inspection.approvalStatus = ApprovalStatus.PENDING;
+      inspection.approvalRequestedAt = new Date();
     }
 
     await inspection.save();

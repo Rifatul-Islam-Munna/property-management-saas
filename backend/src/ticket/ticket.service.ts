@@ -13,6 +13,7 @@ import { QueryTicketDto } from './dto/query-ticket.dto';
 import { UpdateTicketDto } from './dto/update-ticket.dto';
 import {
   Ticket,
+  TicketApprovalStatus,
   TicketDocument,
   TicketStatus,
 } from './entities/ticket.entity';
@@ -133,12 +134,25 @@ export class TicketService {
     const updatePayload =
       actor.role === UserRole.WORKER
         ? {
-            status: dto.status,
+            status: dto.status === TicketStatus.COMPLETED ? TicketStatus.IN_PROGRESS : dto.status,
             actualCost: dto.actualCost,
             completionNotes: dto.completionNotes,
             completionProof: dto.completionProof,
+            approvalStatus:
+              dto.status === TicketStatus.COMPLETED || dto.actualCost !== undefined || dto.completionProof?.length
+                ? TicketApprovalStatus.PENDING
+                : undefined,
+            approvalRequestedAt:
+              dto.status === TicketStatus.COMPLETED || dto.actualCost !== undefined || dto.completionProof?.length
+                ? new Date()
+                : undefined,
           }
-        : dto;
+        : {
+            ...dto,
+            approvedBy: dto.approvalStatus === TicketApprovalStatus.APPROVED ? actor.id : undefined,
+            approvedAt: dto.approvalStatus === TicketApprovalStatus.APPROVED ? new Date() : undefined,
+            status: dto.approvalStatus === TicketApprovalStatus.APPROVED ? TicketStatus.COMPLETED : dto.status,
+          };
 
     const sanitizedPayload = Object.fromEntries(
       Object.entries(updatePayload).filter(([, value]) => value !== undefined),

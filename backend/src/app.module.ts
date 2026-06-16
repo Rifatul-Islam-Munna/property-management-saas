@@ -11,9 +11,11 @@ import { AnalyticsModule } from './analytics/analytics.module';
 import { AnnouncementModule } from './announcement/announcement.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { AssetModule } from './asset/asset.module';
 import { BillModule } from './bill/bill.module';
 import { ImageModule } from './image/image.module';
 import { MessagingModule } from './messaging/messaging.module';
+import { NotificationModule } from './notification/notification.module';
 import { OrganizationModule } from './organization/organization.module';
 import { PlanDocModule } from './plan-doc/plan-doc.module';
 import { PropertyModule } from './property/property.module';
@@ -26,6 +28,7 @@ import { UnitModule } from './unit/unit.module';
 import { UploadsModule } from './uploads/uploads.module';
 import { UserModule } from './user/user.module';
 import { VendorModule } from './vendor/vendor.module';
+import { VendorQuoteModule } from './vendor-quote/vendor-quote.module';
 import { WorkOrderModule } from './work-order/work-order.module';
 
 @Module({
@@ -52,11 +55,13 @@ import { WorkOrderModule } from './work-order/work-order.module';
     AiModule,
     AnalyticsModule,
     AnnouncementModule,
+    AssetModule,
     BillModule,
     FinanceEntryModule,
     ImageModule,
     InspectionModule,
     MessagingModule,
+    NotificationModule,
     OrganizationModule,
     PlanDocModule,
     PropertyModule,
@@ -69,6 +74,7 @@ import { WorkOrderModule } from './work-order/work-order.module';
     UploadsModule,
     UserModule,
     VendorModule,
+    VendorQuoteModule,
     WorkOrderModule,
   ],
   controllers: [AppController],

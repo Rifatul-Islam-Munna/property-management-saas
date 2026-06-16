@@ -31,6 +31,13 @@ export enum TicketStatus {
   ESCALATED = 'escalated',
 }
 
+export enum TicketApprovalStatus {
+  NOT_SUBMITTED = 'not_submitted',
+  PENDING = 'pending',
+  APPROVED = 'approved',
+  REJECTED = 'rejected',
+}
+
 export class TicketComment {
   userId: string;
   userName: string;
@@ -148,6 +155,21 @@ export class Ticket {
 
   @Prop({ type: [String], default: [] })
   completionProof?: string[];
+
+  @Prop({ type: String, enum: TicketApprovalStatus, default: TicketApprovalStatus.NOT_SUBMITTED, index: true })
+  approvalStatus: TicketApprovalStatus;
+
+  @Prop({ type: Date, default: null })
+  approvalRequestedAt?: Date | null;
+
+  @Prop({ type: String, default: null })
+  approvalNote?: string | null;
+
+  @Prop({ type: String, default: null })
+  approvedBy?: string | null;
+
+  @Prop({ type: Date, default: null })
+  approvedAt?: Date | null;
 
   @Prop({ type: String, required: true })
   createdBy: string;

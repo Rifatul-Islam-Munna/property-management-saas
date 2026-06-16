@@ -9,6 +9,7 @@ import {
 } from 'class-validator';
 import {
   TicketCategory,
+  TicketApprovalStatus,
   TicketPriority,
   TicketStatus,
 } from '../entities/ticket.entity';
@@ -80,4 +81,14 @@ export class UpdateTicketDto {
   @IsArray()
   @IsString({ each: true })
   completionProof?: string[];
+
+  @ApiPropertyOptional({ enum: TicketApprovalStatus })
+  @IsOptional()
+  @IsEnum(TicketApprovalStatus)
+  approvalStatus?: TicketApprovalStatus;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  approvalNote?: string;
 }

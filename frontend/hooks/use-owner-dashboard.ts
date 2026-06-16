@@ -5,12 +5,15 @@ import type { ApiSuccessResponse, PaginatedResult } from "@/lib/types/api"
 import type { AuthUser } from "@/lib/types/auth"
 import type {
   AnnouncementItem,
+  AssetItem,
   BillItem,
   DashboardMetrics,
   FinanceEntryItem,
   OccupancyStats,
   InspectionItem,
   MessageItem,
+  NotificationSettingsItem,
+  NotificationTemplateItem,
   PropertyItem,
   RecurringMaintenanceItem,
   TechnicianItem,
@@ -20,6 +23,7 @@ import type {
   TicketStatBucket,
   UnitItem,
   VendorItem,
+  VendorQuoteItem,
   WorkOrderItem,
 } from "@/lib/types/dashboard"
 
@@ -63,11 +67,15 @@ export function useOwnerTechnicianStatsQuery() {
 }
 
 export function useOwnerFinanceEntriesQuery(params?: {
+  page?: number
+  limit?: number
   kind?: "earning" | "expense"
   status?: "pending" | "cleared" | "canceled"
   propertyId?: string
 }) {
   const searchParams = new URLSearchParams()
+  if (params?.page) searchParams.set("page", String(params.page))
+  if (params?.limit) searchParams.set("limit", String(params.limit))
   if (params?.kind) searchParams.set("kind", params.kind)
   if (params?.status) searchParams.set("status", params.status)
   if (params?.propertyId) searchParams.set("propertyId", params.propertyId)
@@ -103,19 +111,30 @@ export function useOwnerUserSearchQuery(search: string, role?: AuthUser["role"])
   )
 }
 
-export function useOwnerPropertiesQuery() {
+export function useOwnerPropertiesQuery(params?: { page?: number; limit?: number }) {
+  const searchParams = new URLSearchParams()
+  if (params?.page) searchParams.set("page", String(params.page))
+  if (params?.limit) searchParams.set("limit", String(params.limit))
+  const queryString = searchParams.toString()
+
   return useQueryWrapper<
     ApiSuccessResponse<PaginatedResult<PropertyItem>>,
     PropertyItem[]
-  >(["owner", "properties"], "/property", {
+  >(["owner", "properties", params ?? {}], `/property${queryString ? `?${queryString}` : ""}`, {
     select: (response) => response?.data?.data ?? [],
   })
 }
 
-export function useOwnerUnitsQuery() {
+export function useOwnerUnitsQuery(params?: { page?: number; limit?: number; propertyId?: string }) {
+  const searchParams = new URLSearchParams()
+  if (params?.page) searchParams.set("page", String(params.page))
+  if (params?.limit) searchParams.set("limit", String(params.limit))
+  if (params?.propertyId) searchParams.set("propertyId", params.propertyId)
+  const queryString = searchParams.toString()
+
   return useQueryWrapper<ApiSuccessResponse<PaginatedResult<UnitItem>>, UnitItem[]>(
-    ["owner", "units"],
-    "/unit",
+    ["owner", "units", params ?? {}],
+    `/unit${queryString ? `?${queryString}` : ""}`,
     {
       select: (response) => response?.data?.data ?? [],
     }
@@ -123,6 +142,8 @@ export function useOwnerUnitsQuery() {
 }
 
 export function useOwnerTenantsQuery(params?: {
+  page?: number
+  limit?: number
   propertyId?: string
   tenantKind?: "renter" | "guest"
   search?: string
@@ -130,6 +151,8 @@ export function useOwnerTenantsQuery(params?: {
   paidThisMonth?: boolean
 }) {
   const searchParams = new URLSearchParams()
+  if (params?.page) searchParams.set("page", String(params.page))
+  if (params?.limit) searchParams.set("limit", String(params.limit))
   if (params?.propertyId) searchParams.set("propertyId", params.propertyId)
   if (params?.tenantKind) searchParams.set("tenantKind", params.tenantKind)
   if (params?.search?.trim()) searchParams.set("search", params.search.trim())
@@ -148,11 +171,25 @@ export function useOwnerTenantsQuery(params?: {
   })
 }
 
-export function useOwnerTicketsQuery() {
+export function useOwnerTicketsQuery(params?: {
+  page?: number
+  limit?: number
+  propertyId?: string
+  status?: string
+  priority?: string
+}) {
+  const searchParams = new URLSearchParams()
+  if (params?.page) searchParams.set("page", String(params.page))
+  if (params?.limit) searchParams.set("limit", String(params.limit))
+  if (params?.propertyId) searchParams.set("propertyId", params.propertyId)
+  if (params?.status) searchParams.set("status", params.status)
+  if (params?.priority) searchParams.set("priority", params.priority)
+  const queryString = searchParams.toString()
+
   return useQueryWrapper<
     ApiSuccessResponse<PaginatedResult<TicketItem>>,
     TicketItem[]
-  >(["owner", "tickets"], "/ticket", {
+  >(["owner", "tickets", params ?? {}], `/ticket${queryString ? `?${queryString}` : ""}`, {
     select: (response) => response?.data?.data ?? [],
   })
 }
@@ -238,7 +275,77 @@ export function useOwnerVendorsQuery() {
   })
 }
 
+export function useOwnerAssetsQuery(params?: {
+  page?: number
+  limit?: number
+  propertyId?: string
+  unitId?: string
+  status?: string
+  category?: string
+  search?: string
+}) {
+  const searchParams = new URLSearchParams()
+  if (params?.page) searchParams.set("page", String(params.page))
+  if (params?.limit) searchParams.set("limit", String(params.limit))
+  if (params?.propertyId) searchParams.set("propertyId", params.propertyId)
+  if (params?.unitId) searchParams.set("unitId", params.unitId)
+  if (params?.status) searchParams.set("status", params.status)
+  if (params?.category) searchParams.set("category", params.category)
+  if (params?.search?.trim()) searchParams.set("search", params.search.trim())
+  const queryString = searchParams.toString()
+
+  return useQueryWrapper<
+    ApiSuccessResponse<PaginatedResult<AssetItem>>,
+    AssetItem[]
+  >(["owner", "assets", params ?? {}], `/asset${queryString ? `?${queryString}` : ""}`, {
+    select: (response) => response?.data?.data ?? [],
+  })
+}
+
+export function useOwnerVendorQuotesQuery(params?: {
+  page?: number
+  limit?: number
+  vendorId?: string
+  propertyId?: string
+  status?: string
+}) {
+  const searchParams = new URLSearchParams()
+  if (params?.page) searchParams.set("page", String(params.page))
+  if (params?.limit) searchParams.set("limit", String(params.limit))
+  if (params?.vendorId) searchParams.set("vendorId", params.vendorId)
+  if (params?.propertyId) searchParams.set("propertyId", params.propertyId)
+  if (params?.status) searchParams.set("status", params.status)
+  const queryString = searchParams.toString()
+
+  return useQueryWrapper<
+    ApiSuccessResponse<PaginatedResult<VendorQuoteItem>>,
+    VendorQuoteItem[]
+  >(["owner", "vendor-quotes", params ?? {}], `/vendor-quote${queryString ? `?${queryString}` : ""}`, {
+    select: (response) => response?.data?.data ?? [],
+  })
+}
+
+export function useOwnerNotificationSettingsQuery() {
+  return useQueryWrapper<
+    ApiSuccessResponse<NotificationSettingsItem>,
+    NotificationSettingsItem | undefined
+  >(["owner", "notification-settings"], "/notification/settings", {
+    select: (response) => response?.data,
+  })
+}
+
+export function useOwnerNotificationTemplatesQuery() {
+  return useQueryWrapper<
+    ApiSuccessResponse<PaginatedResult<NotificationTemplateItem>>,
+    NotificationTemplateItem[]
+  >(["owner", "notification-templates"], "/notification/templates", {
+    select: (response) => response?.data?.data ?? [],
+  })
+}
+
 export function useOwnerBillsQuery(params?: {
+  page?: number
+  limit?: number
   tenantId?: string
   propertyId?: string
   status?: string
@@ -246,6 +353,8 @@ export function useOwnerBillsQuery(params?: {
   monthKey?: string
 }) {
   const searchParams = new URLSearchParams()
+  if (params?.page) searchParams.set("page", String(params.page))
+  if (params?.limit) searchParams.set("limit", String(params.limit))
   if (params?.tenantId) searchParams.set("tenantId", params.tenantId)
   if (params?.propertyId) searchParams.set("propertyId", params.propertyId)
   if (params?.status) searchParams.set("status", params.status)

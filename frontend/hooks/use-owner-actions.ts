@@ -8,10 +8,13 @@ import type { ApiSuccessResponse } from "@/lib/types/api"
 import type { AuthResponse } from "@/lib/types/auth"
 import type {
   AnnouncementItem,
+  AssetItem,
   BillItem,
   FinanceEntryItem,
   InspectionItem,
   MessageItem,
+  NotificationSettingsItem,
+  NotificationTemplateItem,
   PropertyItem,
   RecurringMaintenanceItem,
   TechnicianItem,
@@ -19,6 +22,7 @@ import type {
   UnitItem,
   TicketItem,
   VendorItem,
+  VendorQuoteItem,
   WorkOrderItem,
 } from "@/lib/types/dashboard"
 
@@ -114,6 +118,7 @@ type OwnerTenantUpdatePayload = {
     notes?: string
     leaseStart?: string
     leaseEnd?: string
+    documents?: string[]
     movedInAt?: string
     movedOutAt?: string
     guestFeePaid?: boolean
@@ -184,8 +189,12 @@ type OwnerTicketUpdatePayload = {
     actualCost?: number
     completionNotes?: string
     completionProof?: string[]
+    approvalStatus?: ApprovalStatus
+    approvalNote?: string
   }
 }
+
+type ApprovalStatus = "not_submitted" | "pending" | "approved" | "rejected"
 
 type OwnerWorkOrderPayload = {
   propertyId: string
@@ -202,6 +211,8 @@ type OwnerWorkOrderPayload = {
   priority?: string
   status?: string
   completionProof?: string[]
+  approvalStatus?: ApprovalStatus
+  approvalNote?: string
 }
 
 type OwnerInspectionPayload = {
@@ -219,6 +230,8 @@ type OwnerInspectionPayload = {
   damageReport?: string
   notes?: string
   completed?: boolean
+  approvalStatus?: ApprovalStatus
+  approvalNote?: string
 }
 
 type OwnerRecurringPayload = {
@@ -233,6 +246,8 @@ type OwnerRecurringPayload = {
   actualCost?: number
   currency?: string
   paymentStatus?: string
+  approvalStatus?: ApprovalStatus
+  approvalNote?: string
   isActive?: boolean
 }
 
@@ -244,6 +259,63 @@ type OwnerVendorPayload = {
   address?: string
   notes?: string
   isActive?: boolean
+}
+
+type OwnerAssetPayload = {
+  propertyId: string
+  unitId?: string
+  name: string
+  category: string
+  serialNumber?: string
+  model?: string
+  purchaseDate?: string
+  warrantyEnd?: string
+  lastServiceAt?: string
+  nextServiceAt?: string
+  status?: "active" | "maintenance" | "retired"
+  images?: string[]
+  documents?: string[]
+  notes?: string
+}
+
+type OwnerAssetUpdatePayload = {
+  id: string
+  payload: Partial<OwnerAssetPayload>
+}
+
+type OwnerVendorQuotePayload = {
+  vendorId: string
+  propertyId: string
+  unitId?: string
+  title: string
+  description?: string
+  amount?: number
+  currency?: string
+  status?: "requested" | "submitted" | "approved" | "rejected"
+  attachments?: string[]
+  ownerNote?: string
+}
+
+type OwnerVendorQuoteUpdatePayload = {
+  id: string
+  payload: Partial<OwnerVendorQuotePayload>
+}
+
+type OwnerNotificationTemplatePayload = {
+  name: string
+  subject?: string
+  body: string
+  channels?: Array<"email" | "sms">
+  purpose?: string
+  isActive?: boolean
+}
+
+type OwnerNotificationSettingsPayload = Partial<NotificationSettingsItem>
+
+type OwnerSendNotificationTemplatePayload = {
+  templateId: string
+  tenantIds: string[]
+  channels?: Array<"email" | "sms">
 }
 
 type OwnerTenantPaymentPayload = {
@@ -279,6 +351,14 @@ type OwnerBillUpdatePayload = {
     status?: "unpaid" | "paid" | "partial" | "waived" | "overdue"
     note?: string
   }
+}
+
+type OwnerGenerateMonthlyBillsPayload = {
+  monthKey: string
+  propertyId?: string
+  lateFeeAmount?: number
+  graceDays?: number
+  applyLateFees?: boolean
 }
 
 type OwnerFinanceEntryPayload = {
@@ -595,6 +675,31 @@ export function useOwnerCreateWorkOrderMutation() {
   })
 }
 
+export function useOwnerUpdateWorkOrderMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationKey: ["owner", "update", "work-order"],
+    mutationFn: async ({ id, payload }: { id: string; payload: Partial<OwnerWorkOrderPayload> }) => {
+      const [data, error] = await patchRequest<ApiSuccessResponse<WorkOrderItem>, typeof payload>(
+        `/work-order/${id}`,
+        payload
+      )
+      if (error || !data) throw new Error(error?.message ?? "Work order update failed")
+      return data
+    },
+    onSuccess: async () => {
+      toast.success("Work order updated")
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["owner", "work-orders"] }),
+        queryClient.invalidateQueries({ queryKey: ["worker", "work-orders"] }),
+      ])
+    },
+    onError: (error: Error) => {
+      toast.error(error.message)
+    },
+  })
+}
+
 export function useOwnerCreateInspectionMutation() {
   const queryClient = useQueryClient()
   return useCommonMutationApi<ApiSuccessResponse<InspectionItem>, OwnerInspectionPayload>({
@@ -678,6 +783,120 @@ export function useOwnerCreateVendorMutation() {
   })
 }
 
+export function useOwnerCreateAssetMutation() {
+  const queryClient = useQueryClient()
+  return useCommonMutationApi<ApiSuccessResponse<AssetItem>, OwnerAssetPayload>({
+    url: "/asset",
+    method: "POST",
+    mutationKey: ["owner", "create", "asset"],
+    successMessage: "Asset created",
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["owner", "assets"] })
+    },
+  })
+}
+
+export function useOwnerUpdateAssetMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationKey: ["owner", "update", "asset"],
+    mutationFn: async ({ id, payload }: OwnerAssetUpdatePayload) => {
+      const [data, error] = await patchRequest<ApiSuccessResponse<AssetItem>, typeof payload>(
+        `/asset/${id}`,
+        payload
+      )
+      if (error || !data) throw new Error(error?.message ?? "Asset update failed")
+      return data
+    },
+    onSuccess: async () => {
+      toast.success("Asset updated")
+      await queryClient.invalidateQueries({ queryKey: ["owner", "assets"] })
+    },
+    onError: (error: Error) => {
+      toast.error(error.message)
+    },
+  })
+}
+
+export function useOwnerCreateVendorQuoteMutation() {
+  const queryClient = useQueryClient()
+  return useCommonMutationApi<ApiSuccessResponse<VendorQuoteItem>, OwnerVendorQuotePayload>({
+    url: "/vendor-quote",
+    method: "POST",
+    mutationKey: ["owner", "create", "vendor-quote"],
+    successMessage: "Vendor quote created",
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["owner", "vendor-quotes"] })
+    },
+  })
+}
+
+export function useOwnerUpdateVendorQuoteMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationKey: ["owner", "update", "vendor-quote"],
+    mutationFn: async ({ id, payload }: OwnerVendorQuoteUpdatePayload) => {
+      const [data, error] = await patchRequest<ApiSuccessResponse<VendorQuoteItem>, typeof payload>(
+        `/vendor-quote/${id}`,
+        payload
+      )
+      if (error || !data) throw new Error(error?.message ?? "Vendor quote update failed")
+      return data
+    },
+    onSuccess: async () => {
+      toast.success("Vendor quote updated")
+      await queryClient.invalidateQueries({ queryKey: ["owner", "vendor-quotes"] })
+    },
+    onError: (error: Error) => {
+      toast.error(error.message)
+    },
+  })
+}
+
+export function useOwnerSaveNotificationSettingsMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationKey: ["owner", "save", "notification-settings"],
+    mutationFn: async (payload: OwnerNotificationSettingsPayload) => {
+      const [data, error] = await patchRequest<ApiSuccessResponse<NotificationSettingsItem>, typeof payload>(
+        "/notification/settings",
+        payload
+      )
+      if (error || !data) throw new Error(error?.message ?? "Notification settings save failed")
+      return data
+    },
+    onSuccess: async () => {
+      toast.success("Notification settings saved")
+      await queryClient.invalidateQueries({ queryKey: ["owner", "notification-settings"] })
+    },
+    onError: (error: Error) => {
+      toast.error(error.message)
+    },
+  })
+}
+
+export function useOwnerCreateNotificationTemplateMutation() {
+  const queryClient = useQueryClient()
+  return useCommonMutationApi<ApiSuccessResponse<NotificationTemplateItem>, OwnerNotificationTemplatePayload>({
+    url: "/notification/templates",
+    method: "POST",
+    mutationKey: ["owner", "create", "notification-template"],
+    successMessage: "Template created",
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["owner", "notification-templates"] })
+    },
+  })
+}
+
+export function useOwnerSendNotificationTemplateMutation() {
+  return useCommonMutationApi<ApiSuccessResponse<any>, OwnerSendNotificationTemplatePayload>({
+    url: "/notification/send-template",
+    method: "POST",
+    mutationKey: ["owner", "send", "notification-template"],
+    successMessage: "Notification queued",
+  })
+}
+
 export function useOwnerRecordTenantPaymentMutation() {
   const queryClient = useQueryClient()
   return useMutation({
@@ -737,6 +956,23 @@ export function useOwnerUpdateBillMutation() {
     },
     onError: (error: Error) => {
       toast.error(error.message)
+    },
+  })
+}
+
+export function useOwnerGenerateMonthlyBillsMutation() {
+  const queryClient = useQueryClient()
+  return useCommonMutationApi<ApiSuccessResponse<any>, OwnerGenerateMonthlyBillsPayload>({
+    url: "/bill/monthly-rent",
+    method: "POST",
+    mutationKey: ["owner", "generate", "monthly-bills"],
+    successMessage: "Monthly bills generated",
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["owner", "bills"] }),
+        queryClient.invalidateQueries({ queryKey: ["owner", "tenants"] }),
+        queryClient.invalidateQueries({ queryKey: ["owner", "analytics", "dashboard"] }),
+      ])
     },
   })
 }

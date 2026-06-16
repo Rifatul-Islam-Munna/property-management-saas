@@ -254,6 +254,11 @@ export type TicketItem = AuditFields & {
   actualCost?: number | null
   completionNotes?: string | null
   completionProof?: string[]
+  approvalStatus?: "not_submitted" | "pending" | "approved" | "rejected"
+  approvalRequestedAt?: string | null
+  approvalNote?: string | null
+  approvedBy?: string | null
+  approvedAt?: string | null
   resolvedAt?: string | null
   createdAt?: string
 }
@@ -323,6 +328,11 @@ export type WorkOrderItem = AuditFields & {
   currency?: string | null
   completionNotes?: string | null
   completionProof?: string[]
+  approvalStatus?: "not_submitted" | "pending" | "approved" | "rejected"
+  approvalRequestedAt?: string | null
+  approvalNote?: string | null
+  approvedBy?: string | null
+  approvedAt?: string | null
   verifiedAt?: string | null
 }
 
@@ -349,6 +359,11 @@ export type InspectionItem = AuditFields & {
   workerReportedAt?: string | null
   workerReportedBy?: string | null
   completed?: boolean
+  approvalStatus?: "not_submitted" | "pending" | "approved" | "rejected"
+  approvalRequestedAt?: string | null
+  approvalNote?: string | null
+  approvedBy?: string | null
+  approvedAt?: string | null
   completedAt?: string | null
 }
 
@@ -375,6 +390,11 @@ export type RecurringMaintenanceItem = AuditFields & {
     reportedAt?: string | null
     reportedBy?: string
   }>
+  approvalStatus?: "not_submitted" | "pending" | "approved" | "rejected"
+  approvalRequestedAt?: string | null
+  approvalNote?: string | null
+  approvedBy?: string | null
+  approvedAt?: string | null
   isActive?: boolean
 }
 
@@ -441,6 +461,70 @@ export type VendorItem = AuditFields & {
   email?: string | null
   phone?: string | null
   isActive?: boolean
+}
+
+export type AssetItem = AuditFields & {
+  _id: string
+  propertyId: string
+  unitId?: string | null
+  name: string
+  category: string
+  serialNumber?: string | null
+  model?: string | null
+  purchaseDate?: string | null
+  warrantyEnd?: string | null
+  lastServiceAt?: string | null
+  nextServiceAt?: string | null
+  status: "active" | "maintenance" | "retired"
+  images?: string[]
+  documents?: string[]
+  notes?: string | null
+}
+
+export type VendorQuoteItem = AuditFields & {
+  _id: string
+  vendorId: string
+  propertyId: string
+  unitId?: string | null
+  title: string
+  description?: string | null
+  amount?: number | null
+  currency?: string | null
+  status: "requested" | "submitted" | "approved" | "rejected"
+  attachments?: string[]
+  ownerNote?: string | null
+  approvedAt?: string | null
+  createdAt?: string
+}
+
+export type NotificationTemplateItem = AuditFields & {
+  _id: string
+  name: string
+  subject?: string | null
+  body: string
+  channels: Array<"email" | "sms">
+  purpose?: string | null
+  isActive?: boolean
+}
+
+export type NotificationSettingsItem = {
+  overdueRentEnabled: boolean
+  overdueRentDaysAfterDue: number
+  overdueRentRepeatEveryDays: number
+  overdueRentChannels: Array<"email" | "sms">
+  overdueRentTemplateId?: string
+  inspectionEnabled?: boolean
+  inspectionChannels?: Array<"email" | "sms">
+  inspectionTemplateId?: string
+  recurringMaintenanceEnabled?: boolean
+  recurringMaintenanceChannels?: Array<"email" | "sms">
+  recurringMaintenanceTemplateId?: string
+  tenantCreatedChannels?: Array<"email" | "sms">
+  tenantCreatedTemplateId?: string
+  workerCreatedChannels?: Array<"email" | "sms">
+  workerCreatedTemplateId?: string
+  noticeCreatedChannels?: Array<"email" | "sms">
+  noticeCreatedTemplateId?: string
 }
 
 export type UploadImageResponse = {

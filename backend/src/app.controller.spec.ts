@@ -15,8 +15,11 @@ describe('AppController', () => {
   });
 
   describe('root', () => {
-    it('should return "Hello World!"', () => {
-      expect(appController.getHello()).toBe('Hello World!');
+    it('should return API metadata', () => {
+      expect(appController.getHello()).toEqual({
+        message: 'Property Operations Platform API',
+        docs: '/api',
+      });
     });
   });
 });

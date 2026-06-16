@@ -8,8 +8,12 @@ import {
   Building2,
   ClipboardCheck,
   CreditCard,
+  CalendarDays,
+  Download,
   Eye,
+  FileChartColumn,
   FileText,
+  HelpCircle,
   Home,
   Pencil,
   Repeat,
@@ -29,8 +33,10 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty"
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
+import { Calendar } from "@/components/ui/calendar"
 import { UploadCollectionField } from "@/components/shared/upload-collection-field"
 import { RichTextContent, RichTextEditor } from "@/components/shared/rich-text-editor"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import {
@@ -43,6 +49,7 @@ import {
 } from "@/components/ui/sheet"
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import {
   DashboardPanelSkeleton,
   DashboardTableSkeleton,
@@ -63,31 +70,43 @@ import {
   useOwnerCreateUserMutation,
   useOwnerCreateUnitMutation,
   useOwnerCreateVendorMutation,
+  useOwnerCreateVendorQuoteMutation,
   useOwnerCreateWorkOrderMutation,
   useOwnerCreateAssignmentRequestMutation,
+  useOwnerCreateAssetMutation,
   useOwnerCreateBillMutation,
+  useOwnerCreateNotificationTemplateMutation,
+  useOwnerGenerateMonthlyBillsMutation,
   useOwnerDeleteTechnicianMutation,
   useOwnerDeleteTenantMutation,
   useOwnerDeleteUnitMutation,
   useOwnerSendDocumentMutation,
   useOwnerSendNoticeMutation,
   useOwnerRecordTenantPaymentMutation,
+  useOwnerSaveNotificationSettingsMutation,
+  useOwnerSendNotificationTemplateMutation,
   useOwnerTogglePropertyMutation,
   useOwnerToggleTechnicianMutation,
   useOwnerToggleTenantMutation,
   useOwnerToggleUnitMutation,
   useOwnerUpdateBillMutation,
+  useOwnerUpdateAssetMutation,
   useOwnerUpdateInspectionMutation,
   useOwnerUpdateRecurringMaintenanceMutation,
   useOwnerUpdateTenantMutation,
+  useOwnerUpdateVendorQuoteMutation,
   useOwnerUpdateTicketMutation,
+  useOwnerUpdateWorkOrderMutation,
 } from "@/hooks/use-owner-actions"
 import {
   useOwnerAnnouncementsQuery,
+  useOwnerAssetsQuery,
   useOwnerBillsQuery,
   useOwnerFinanceEntriesQuery,
   useOwnerInspectionsQuery,
   useOwnerMessagesQuery,
+  useOwnerNotificationSettingsQuery,
+  useOwnerNotificationTemplatesQuery,
   useOwnerPropertiesQuery,
   useOwnerRecurringMaintenancesQuery,
   useOwnerTechniciansQuery,
@@ -97,6 +116,7 @@ import {
   useOwnerUserSearchQuery,
   useOwnerUsersQuery,
   useOwnerVendorsQuery,
+  useOwnerVendorQuotesQuery,
   useOwnerWorkOrdersQuery,
 } from "@/hooks/use-owner-dashboard"
 import type { ApiSuccessResponse } from "@/lib/types/api"
@@ -129,6 +149,8 @@ type ExtraChargeTemplateFormItem = {
   amount: string
   frequency: string
 }
+
+type ReportRow = Record<string, string | number | null | undefined>
 
 function mapExtraChargeTemplatesToForm(
   templates?: Array<{ title: string; amount: number; frequency?: string | null; note?: string | null }>
@@ -176,9 +198,93 @@ function toDateInputValue(value?: string | Date | null) {
   return parsed.toISOString().slice(0, 10)
 }
 
+function downloadCsv(fileName: string, rows: Array<Record<string, string | number | null | undefined>>) {
+  const headers = Object.keys(rows[0] ?? { empty: "" })
+  const escapeCell = (value: string | number | null | undefined) =>
+    `"${String(value ?? "").replaceAll('"', '""')}"`
+  const csv = [
+    headers.join(","),
+    ...rows.map((row) => headers.map((header) => escapeCell(row[header])).join(",")),
+  ].join("\n")
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement("a")
+  link.href = url
+  link.download = fileName
+  link.click()
+  URL.revokeObjectURL(url)
+}
+
 function paginateItems<T>(items: T[], page: number, pageSize: number) {
   const start = (page - 1) * pageSize
   return items.slice(start, start + pageSize)
+}
+
+function getDateTime(value?: string | Date | null) {
+  if (!value) return null
+  const parsed = new Date(value)
+  return Number.isNaN(parsed.getTime()) ? null : parsed.getTime()
+}
+
+function isDateInRange(value?: string | Date | null, from?: string, to?: string) {
+  const time = getDateTime(value)
+  if (time == null) return false
+  const fromTime = from ? new Date(`${from}T00:00:00`).getTime() : null
+  const toTime = to ? new Date(`${to}T23:59:59`).getTime() : null
+  if (fromTime != null && time < fromTime) return false
+  if (toTime != null && time > toTime) return false
+  return true
+}
+
+function formatDateInput(value?: Date) {
+  if (!value) return ""
+  const month = String(value.getMonth() + 1).padStart(2, "0")
+  const day = String(value.getDate()).padStart(2, "0")
+  return `${value.getFullYear()}-${month}-${day}`
+}
+
+function parseDateInput(value?: string) {
+  if (!value) return undefined
+  const parsed = new Date(`${value}T12:00:00`)
+  return Number.isNaN(parsed.getTime()) ? undefined : parsed
+}
+
+function DatePickerButton({
+  label,
+  value,
+  onChange,
+  monthOnly,
+}: {
+  label: string
+  value: string
+  onChange: (value: string) => void
+  monthOnly?: boolean
+}) {
+  const date = monthOnly ? parseDateInput(`${value || new Date().toISOString().slice(0, 7)}-01`) : parseDateInput(value)
+  return (
+    <Field>
+      <FieldLabel>{label}</FieldLabel>
+      <Popover>
+        <PopoverTrigger asChild>
+          <Button type="button" variant="outline" className="w-full justify-start shadow-none">
+            <CalendarDays className="size-4" />
+            {monthOnly ? (value || "Select month") : (value || "Select date")}
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent align="start" className="w-auto">
+          <Calendar
+            mode="single"
+            selected={date}
+            onSelect={(selected) => {
+              if (!selected) return
+              onChange(monthOnly ? formatDateInput(selected).slice(0, 7) : formatDateInput(selected))
+            }}
+            captionLayout="dropdown"
+          />
+        </PopoverContent>
+      </Popover>
+    </Field>
+  )
 }
 
 function PaginationControls({
@@ -288,6 +394,25 @@ function OwnerPageHero({
   )
 }
 
+function HelpMark({ label }: { label: string }) {
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            className="inline-flex size-6 items-center justify-center rounded-full border text-slate-500 hover:bg-slate-50 hover:text-slate-950"
+            aria-label={label}
+          >
+            <HelpCircle className="size-3.5" />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="top">{label}</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  )
+}
+
 function CreateSheet({
   open,
   onOpenChange,
@@ -341,6 +466,49 @@ function AuditStamp({
         {item.updatedByRole ? ` • ${item.updatedByRole}` : ""}
       </p>
       <p className="mt-1 text-xs text-slate-500">{formatDateLabel(item.updatedAt, "Unknown time")}</p>
+    </div>
+  )
+}
+
+function ApprovalBadge({ status }: { status?: "not_submitted" | "pending" | "approved" | "rejected" }) {
+  const value = status ?? "not_submitted"
+  return (
+    <Badge variant={value === "approved" ? "default" : value === "rejected" ? "destructive" : value === "pending" ? "outline" : "secondary"}>
+      {value.replaceAll("_", " ")}
+    </Badge>
+  )
+}
+
+function ApprovalControls({
+  status,
+  disabled,
+  onApprove,
+  onReject,
+  onPaid,
+  onUnpaid,
+}: {
+  status?: "not_submitted" | "pending" | "approved" | "rejected"
+  disabled?: boolean
+  onApprove: () => void
+  onReject: () => void
+  onPaid?: () => void
+  onUnpaid?: () => void
+}) {
+  return (
+    <div className="mt-3 rounded-xl border bg-white p-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <p className="text-sm font-medium text-slate-950">Owner approval</p>
+          <HelpMark label="Worker submits cost/proof first. Owner approves completion, rejects for rework, then marks payment." />
+        </div>
+        <ApprovalBadge status={status} />
+      </div>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <Button type="button" size="sm" variant="outline" disabled={disabled || status !== "pending"} onClick={onApprove}>Approve completion</Button>
+        <Button type="button" size="sm" variant="outline" disabled={disabled || status !== "pending"} onClick={onReject}>Reject / rework</Button>
+        {onPaid ? <Button type="button" size="sm" variant="outline" disabled={disabled || status !== "approved"} onClick={onPaid}>Mark paid</Button> : null}
+        {onUnpaid ? <Button type="button" size="sm" variant="outline" disabled={disabled || status !== "approved"} onClick={onUnpaid}>Mark unpaid</Button> : null}
+      </div>
     </div>
   )
 }
@@ -781,12 +949,31 @@ export function TenantOwnerPropertiesPage() {
                 <Field><FieldLabel>Zip code</FieldLabel><Input value={editForm.zipCode} onChange={(event) => setEditForm((current) => ({ ...current, zipCode: event.target.value ?? "" }))} /></Field>
                 <Field><FieldLabel>Total units</FieldLabel><Input type="number" value={editForm.totalUnits} onChange={(event) => setEditForm((current) => ({ ...current, totalUnits: event.target.value ?? "" }))} /></Field>
                 <Field><FieldLabel>Total floors</FieldLabel><Input type="number" value={editForm.totalFloors} onChange={(event) => setEditForm((current) => ({ ...current, totalFloors: event.target.value ?? "" }))} /></Field>
-                <Field><FieldLabel>Amenities</FieldLabel><Input value={editForm.amenities} onChange={(event) => setEditForm((current) => ({ ...current, amenities: event.target.value ?? "" }))} /></Field>
-                <Field><FieldLabel>Images</FieldLabel><Input value={editForm.images} onChange={(event) => setEditForm((current) => ({ ...current, images: event.target.value ?? "" }))} /></Field>
-                <Field><FieldLabel>Documents</FieldLabel><Input value={editForm.documents} onChange={(event) => setEditForm((current) => ({ ...current, documents: event.target.value ?? "" }))} /></Field>
+                <Field><FieldLabel>Amenities</FieldLabel><Input value={editForm.amenities} onChange={(event) => setEditForm((current) => ({ ...current, amenities: event.target.value ?? "" }))} /><FieldDescription>Comma separated</FieldDescription></Field>
+                <UploadCollectionField
+                  label="Property images"
+                  accept="image/*"
+                  kind="image"
+                  values={splitCsv(editForm.images)}
+                  onChange={(values) => setEditForm((current) => ({ ...current, images: values.join(",") }))}
+                />
+                <UploadCollectionField
+                  label="Property documents"
+                  accept=".pdf,.doc,.docx,.xls,.xlsx,.txt,image/*"
+                  kind="file"
+                  values={splitCsv(editForm.documents)}
+                  onChange={(values) => setEditForm((current) => ({ ...current, documents: values.join(",") }))}
+                />
                 <Field><FieldLabel>Contact phone</FieldLabel><Input value={editForm.contactPhone} onChange={(event) => setEditForm((current) => ({ ...current, contactPhone: event.target.value ?? "" }))} /></Field>
                 <Field><FieldLabel>Contact email</FieldLabel><Input value={editForm.contactEmail} onChange={(event) => setEditForm((current) => ({ ...current, contactEmail: event.target.value ?? "" }))} /></Field>
                 <Field><FieldLabel>Description</FieldLabel><Textarea value={editForm.description} onChange={(event) => setEditForm((current) => ({ ...current, description: event.target.value ?? "" }))} /></Field>
+                <Field className="flex flex-row items-center justify-between rounded-xl border px-4 py-3">
+                  <div>
+                    <FieldLabel>Active status</FieldLabel>
+                    <FieldDescription>Keep property available in owner workflows.</FieldDescription>
+                  </div>
+                  <Switch checked={editForm.isActive} onCheckedChange={(checked) => setEditForm((current) => ({ ...current, isActive: checked ?? true }))} />
+                </Field>
               </FieldGroup>
               <Button type="submit" disabled={toggleProperty.isPending}>Update property</Button>
             </form>
@@ -2304,6 +2491,529 @@ export function TenantOwnerTenantsPage() {
   )
 }
 
+function getLeaseStatus(tenant: TenantItem) {
+  if (!tenant.leaseStart && !tenant.leaseEnd) {
+    return { label: "Missing dates", tone: "secondary" as const }
+  }
+  if (!tenant.leaseEnd) {
+    return { label: "Month-to-month", tone: "outline" as const }
+  }
+
+  const end = new Date(tenant.leaseEnd)
+  if (Number.isNaN(end.getTime())) {
+    return { label: "Invalid date", tone: "secondary" as const }
+  }
+
+  const today = new Date()
+  const daysLeft = Math.ceil((end.getTime() - today.getTime()) / 86400000)
+  if (daysLeft < 0) return { label: "Expired", tone: "destructive" as const }
+  if (daysLeft <= 30) return { label: `${daysLeft} days left`, tone: "outline" as const }
+  return { label: "Active", tone: "default" as const }
+}
+
+export function TenantOwnerLeasesPage() {
+  const tenants = useOwnerTenantsQuery()
+  const properties = useOwnerPropertiesQuery()
+  const units = useOwnerUnitsQuery()
+  const updateTenant = useOwnerUpdateTenantMutation()
+  const tenantList = Array.isArray(tenants.data) ? tenants.data : []
+  const propertyList = Array.isArray(properties.data) ? properties.data : []
+  const unitList = Array.isArray(units.data) ? units.data : []
+  const [isRenewOpen, setIsRenewOpen] = useState(false)
+  const [leaseDocs, setLeaseDocs] = useState<string[]>([])
+  const [form, setForm] = useState({
+    tenantId: "",
+    leaseStart: "",
+    leaseEnd: "",
+    monthlyRent: "",
+    rentDueDay: "",
+    securityDeposit: "",
+    notes: "",
+  })
+
+  const selectedTenant = tenantList.find((tenant) => tenant._id === form.tenantId)
+  const activeCount = tenantList.filter((tenant) => getLeaseStatus(tenant).label === "Active").length
+  const expiringCount = tenantList.filter((tenant) => getLeaseStatus(tenant).label.includes("days left")).length
+  const expiredCount = tenantList.filter((tenant) => getLeaseStatus(tenant).label === "Expired").length
+  const missingCount = tenantList.filter((tenant) => getLeaseStatus(tenant).label === "Missing dates").length
+
+  return (
+    <div className="space-y-6">
+      <OwnerPageHero
+        icon={FileText}
+        badge="Lease lifecycle"
+        title="Leases"
+        body="Track lease dates, renewal risk, deposits, docs, rent terms, and move-in or move-out notes from one owner screen."
+      />
+
+      <div className="grid gap-3 md:grid-cols-4">
+        {[
+          ["Active", activeCount, "Leases with end dates more than 30 days away."],
+          ["Expiring", expiringCount, "Leases ending within 30 days."],
+          ["Expired", expiredCount, "Leases past end date. Renew or move out."],
+          ["Needs data", missingCount, "Tenants missing lease start and end dates."],
+        ].map(([label, value, help]) => (
+          <Card key={label} className="shadow-none">
+            <CardContent className="flex items-center justify-between p-4">
+              <div>
+                <p className="text-xs uppercase tracking-wide text-slate-500">{label}</p>
+                <p className="mt-1 text-2xl font-semibold text-slate-950">{value}</p>
+              </div>
+              <HelpMark label={String(help)} />
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      <div className="flex justify-end">
+        <CreateSheet
+          open={isRenewOpen}
+          onOpenChange={setIsRenewOpen}
+          title="Renew or update lease"
+          description="Update lease dates, rent terms, deposit, documents, and owner notes."
+          triggerLabel="Update lease"
+        >
+          <form
+            className="space-y-4"
+            onSubmit={(event) => {
+              event.preventDefault()
+              if (!form.tenantId) return
+              updateTenant.mutate(
+                {
+                  id: form.tenantId,
+                  payload: {
+                    leaseStart: form.leaseStart || undefined,
+                    leaseEnd: form.leaseEnd || undefined,
+                    monthlyRent: Number(form.monthlyRent || selectedTenant?.monthlyRent || "0") || undefined,
+                    rentDueDay: Number(form.rentDueDay || selectedTenant?.rentDueDay || "0") || undefined,
+                    securityDeposit: Number(form.securityDeposit || selectedTenant?.securityDeposit || "0") || undefined,
+                    documents: leaseDocs.length ? leaseDocs : selectedTenant?.documents ?? [],
+                    notes: form.notes || selectedTenant?.notes || undefined,
+                  },
+                },
+                {
+                  onSuccess: () => {
+                    setForm({ tenantId: "", leaseStart: "", leaseEnd: "", monthlyRent: "", rentDueDay: "", securityDeposit: "", notes: "" })
+                    setLeaseDocs([])
+                    setIsRenewOpen(false)
+                  },
+                }
+              )
+            }}
+          >
+            <FieldGroup>
+              <Field>
+                <div className="flex items-center gap-2">
+                  <FieldLabel>Tenant</FieldLabel>
+                  <HelpMark label="Pick tenant whose lease terms you want to create, renew, or correct." />
+                </div>
+                <Select
+                  value={form.tenantId}
+                  onValueChange={(value) => {
+                    const tenant = tenantList.find((item) => item._id === value)
+                    setForm({
+                      tenantId: value ?? "",
+                      leaseStart: toDateInputValue(tenant?.leaseStart),
+                      leaseEnd: toDateInputValue(tenant?.leaseEnd),
+                      monthlyRent: tenant?.monthlyRent ? String(tenant.monthlyRent) : "",
+                      rentDueDay: tenant?.rentDueDay ? String(tenant.rentDueDay) : "",
+                      securityDeposit: tenant?.securityDeposit ? String(tenant.securityDeposit) : "",
+                      notes: tenant?.notes ?? "",
+                    })
+                    setLeaseDocs(tenant?.documents ?? [])
+                  }}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Select tenant" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectGroup>
+                      {tenantList.map((tenant) => (
+                        <SelectItem key={tenant._id} value={tenant._id}>
+                          {tenant.fullName}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+              </Field>
+              <div className="grid gap-3 md:grid-cols-2">
+                <Field>
+                  <div className="flex items-center gap-2">
+                    <FieldLabel>Lease start</FieldLabel>
+                    <HelpMark label="Date tenant lease begins. Used for renewal and report timing." />
+                  </div>
+                  <Input type="date" value={form.leaseStart} onChange={(event) => setForm((current) => ({ ...current, leaseStart: event.target.value ?? "" }))} />
+                </Field>
+                <Field>
+                  <div className="flex items-center gap-2">
+                    <FieldLabel>Lease end</FieldLabel>
+                    <HelpMark label="Leave blank for month-to-month. Ending within 30 days shows as expiring." />
+                  </div>
+                  <Input type="date" value={form.leaseEnd} onChange={(event) => setForm((current) => ({ ...current, leaseEnd: event.target.value ?? "" }))} />
+                </Field>
+              </div>
+              <div className="grid gap-3 md:grid-cols-3">
+                <Field>
+                  <FieldLabel>Monthly rent</FieldLabel>
+                  <Input type="number" value={form.monthlyRent} onChange={(event) => setForm((current) => ({ ...current, monthlyRent: event.target.value ?? "" }))} />
+                </Field>
+                <Field>
+                  <FieldLabel>Due day</FieldLabel>
+                  <Input type="number" min={1} max={31} value={form.rentDueDay} onChange={(event) => setForm((current) => ({ ...current, rentDueDay: event.target.value ?? "" }))} />
+                </Field>
+                <Field>
+                  <FieldLabel>Deposit</FieldLabel>
+                  <Input type="number" value={form.securityDeposit} onChange={(event) => setForm((current) => ({ ...current, securityDeposit: event.target.value ?? "" }))} />
+                </Field>
+              </div>
+              <UploadCollectionField label="Lease documents" accept=".pdf,.doc,.docx,image/*" kind="file" values={leaseDocs} onChange={setLeaseDocs} />
+              <Field>
+                <FieldLabel>Owner notes</FieldLabel>
+                <Textarea value={form.notes} onChange={(event) => setForm((current) => ({ ...current, notes: event.target.value ?? "" }))} />
+              </Field>
+            </FieldGroup>
+            <Button type="submit" disabled={updateTenant.isPending || !form.tenantId}>
+              Save lease
+            </Button>
+          </form>
+        </CreateSheet>
+      </div>
+
+      <WithBone name="owner-page-leases" loading={tenants.isLoading || properties.isLoading || units.isLoading} fallback={<DashboardTableSkeleton />}>
+        <Card className="shadow-none">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              Lease register
+              <HelpMark label="Shows tenant lease status, rent terms, deposit, linked property/unit, and document count." />
+            </CardTitle>
+            <CardDescription>Use Update lease to renew, upload documents, or correct missing dates.</CardDescription>
+          </CardHeader>
+          <CardContent className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Tenant</TableHead>
+                  <TableHead>Property</TableHead>
+                  <TableHead>Unit</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Start</TableHead>
+                  <TableHead>End</TableHead>
+                  <TableHead>Rent</TableHead>
+                  <TableHead>Deposit</TableHead>
+                  <TableHead>Docs</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {tenantList.length ? tenantList.map((tenant) => {
+                  const property = propertyList.find((item) => item._id === tenant.propertyId)
+                  const unit = unitList.find((item) => item._id === tenant.unitId)
+                  const status = getLeaseStatus(tenant)
+                  return (
+                    <TableRow key={tenant._id}>
+                      <TableCell className="font-medium text-slate-950">{tenant.fullName}</TableCell>
+                      <TableCell>{property?.name ?? "No property"}</TableCell>
+                      <TableCell>{unit?.unitNumber ?? "No unit"}</TableCell>
+                      <TableCell><Badge variant={status.tone}>{status.label}</Badge></TableCell>
+                      <TableCell>{formatDateLabel(tenant.leaseStart)}</TableCell>
+                      <TableCell>{tenant.leaseEnd ? formatDateLabel(tenant.leaseEnd) : "Month-to-month"}</TableCell>
+                      <TableCell>{formatMoney(tenant.monthlyRent ?? 0)}</TableCell>
+                      <TableCell>{formatMoney(tenant.securityDeposit ?? 0)}</TableCell>
+                      <TableCell>{tenant.documents?.length ?? 0}</TableCell>
+                    </TableRow>
+                  )
+                }) : (
+                  <TableRow>
+                    <TableCell colSpan={9}>
+                      <Empty>
+                        <EmptyHeader>
+                          <EmptyMedia variant="icon"><FileText /></EmptyMedia>
+                          <EmptyTitle>No tenants yet</EmptyTitle>
+                          <EmptyDescription>Add tenants first, then manage leases here.</EmptyDescription>
+                        </EmptyHeader>
+                      </Empty>
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      </WithBone>
+    </div>
+  )
+}
+
+export function TenantOwnerHealthPage() {
+  const properties = useOwnerPropertiesQuery({ limit: 500 })
+  const units = useOwnerUnitsQuery({ limit: 1000 })
+  const tenants = useOwnerTenantsQuery({ limit: 1000 })
+  const tickets = useOwnerTicketsQuery({ limit: 1000 })
+  const bills = useOwnerBillsQuery({ limit: 1000 })
+  const propertyList = Array.isArray(properties.data) ? properties.data : []
+  const unitList = Array.isArray(units.data) ? units.data : []
+  const tenantList = Array.isArray(tenants.data) ? tenants.data : []
+  const ticketList = Array.isArray(tickets.data) ? tickets.data : []
+  const billList = Array.isArray(bills.data) ? bills.data : []
+
+  const healthRows = propertyList.map((property) => {
+    const propertyUnits = unitList.filter((unit) => unit.propertyId === property._id)
+    const occupiedUnits = propertyUnits.filter((unit) => unit.status === "occupied")
+    const propertyTenants = tenantList.filter((tenant) => tenant.propertyId === property._id)
+    const openTickets = ticketList.filter(
+      (ticket) =>
+        ticket.propertyId === property._id &&
+        !["completed", "cancelled"].includes(ticket.status)
+    )
+    const emergencyTickets = openTickets.filter((ticket) => ticket.priority === "emergency")
+    const overdueBills = billList.filter((bill) => bill.propertyId === property._id && bill.status === "overdue")
+    const expiredLeases = propertyTenants.filter((tenant) => getLeaseStatus(tenant).label === "Expired")
+    const expiringLeases = propertyTenants.filter((tenant) => getLeaseStatus(tenant).label.includes("days left"))
+    const occupancyRate = propertyUnits.length ? Math.round((occupiedUnits.length / propertyUnits.length) * 100) : 0
+    const score = Math.max(
+      0,
+      100 -
+        (propertyUnits.length && occupancyRate < 80 ? 15 : 0) -
+        openTickets.length * 3 -
+        emergencyTickets.length * 12 -
+        overdueBills.length * 8 -
+        expiredLeases.length * 10 -
+        expiringLeases.length * 4
+    )
+    const grade = score >= 85 ? "Healthy" : score >= 65 ? "Watch" : "Risk"
+
+    return {
+      id: property._id,
+      name: property.name,
+      score,
+      grade,
+      occupancyRate,
+      openTickets: openTickets.length,
+      emergencyTickets: emergencyTickets.length,
+      overdueBills: overdueBills.length,
+      expiredLeases: expiredLeases.length,
+      expiringLeases: expiringLeases.length,
+    }
+  })
+
+  const averageScore = healthRows.length
+    ? Math.round(healthRows.reduce((sum, row) => sum + row.score, 0) / healthRows.length)
+    : 0
+  const atRiskCount = healthRows.filter((row) => row.grade === "Risk").length
+
+  return (
+    <div className="space-y-6">
+      <OwnerPageHero
+        icon={Building2}
+        badge="Health"
+        title="Property health score"
+        body="Score each property from occupancy, open work, emergency tickets, overdue bills, and lease risk."
+      />
+
+      <div className="grid gap-3 md:grid-cols-3">
+        {[
+          ["Average score", averageScore, "Average score across all properties."],
+          ["At risk", atRiskCount, "Properties below 65 score."],
+          ["Properties", healthRows.length, "Active property records in this owner account."],
+        ].map(([label, value, help]) => (
+          <Card key={label} className="shadow-none">
+            <CardContent className="flex items-center justify-between p-4">
+              <div>
+                <p className="text-xs uppercase tracking-wide text-slate-500">{label}</p>
+                <p className="mt-1 text-2xl font-semibold text-slate-950">{value}</p>
+              </div>
+              <HelpMark label={String(help)} />
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      <WithBone name="owner-page-health" loading={properties.isLoading || units.isLoading || tickets.isLoading || bills.isLoading} fallback={<DashboardTableSkeleton />}>
+        <Card className="shadow-none">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              Property risk board
+              <HelpMark label="Score starts at 100. Penalties come from low occupancy, open tickets, emergency tickets, overdue bills, expired leases, and expiring leases." />
+            </CardTitle>
+            <CardDescription>Use this to know which property needs owner attention first.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {healthRows.length ? healthRows.map((row) => (
+              <div key={row.id} className="rounded-xl border p-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="font-medium text-slate-950">{row.name}</p>
+                    <p className="text-sm text-slate-600">Occupancy {row.occupancyRate}%</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Badge variant={row.grade === "Risk" ? "destructive" : row.grade === "Watch" ? "outline" : "default"}>{row.grade}</Badge>
+                    <p className="text-2xl font-semibold text-slate-950">{row.score}</p>
+                  </div>
+                </div>
+                <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100">
+                  <div
+                    className="h-full bg-blue-700"
+                    style={{ width: `${row.score}%` }}
+                  />
+                </div>
+                <div className="mt-3 grid gap-2 text-sm md:grid-cols-5">
+                  <div className="rounded-lg bg-slate-50 p-3">Open tickets: {row.openTickets}</div>
+                  <div className="rounded-lg bg-slate-50 p-3">Emergency: {row.emergencyTickets}</div>
+                  <div className="rounded-lg bg-slate-50 p-3">Overdue bills: {row.overdueBills}</div>
+                  <div className="rounded-lg bg-slate-50 p-3">Expired leases: {row.expiredLeases}</div>
+                  <div className="rounded-lg bg-slate-50 p-3">Expiring leases: {row.expiringLeases}</div>
+                </div>
+              </div>
+            )) : (
+              <Empty>
+                <EmptyHeader>
+                  <EmptyMedia variant="icon"><Building2 /></EmptyMedia>
+                  <EmptyTitle>No properties yet</EmptyTitle>
+                  <EmptyDescription>Add properties to calculate health scores.</EmptyDescription>
+                </EmptyHeader>
+              </Empty>
+            )}
+          </CardContent>
+        </Card>
+      </WithBone>
+    </div>
+  )
+}
+
+export function TenantOwnerFinancePage() {
+  const properties = useOwnerPropertiesQuery()
+  const tenants = useOwnerTenantsQuery({ limit: 500 })
+  const bills = useOwnerBillsQuery({ limit: 500 })
+  const financeEntries = useOwnerFinanceEntriesQuery({ limit: 500 })
+  const propertyList = Array.isArray(properties.data) ? properties.data : []
+  const tenantList = Array.isArray(tenants.data) ? tenants.data : []
+  const billList = Array.isArray(bills.data) ? bills.data : []
+  const financeList = Array.isArray(financeEntries.data) ? financeEntries.data : []
+  const currentMonth = new Date().toISOString().slice(0, 7)
+
+  const dueBills = billList.filter((bill) => ["unpaid", "partial", "overdue"].includes(bill.status))
+  const overdueBills = billList.filter((bill) => bill.status === "overdue")
+  const expectedRent = tenantList.reduce((sum, tenant) => sum + (tenant.monthlyRent ?? 0), 0)
+  const collectedRent = billList
+    .filter((bill) => bill.kind === "rent" && bill.monthKey === currentMonth && bill.status === "paid")
+    .reduce((sum, bill) => sum + bill.amount, 0)
+  const dueAmount = dueBills.reduce((sum, bill) => sum + bill.amount, 0)
+  const earnings = financeList
+    .filter((entry) => entry.kind === "earning" && entry.status !== "canceled")
+    .reduce((sum, entry) => sum + entry.amount, 0)
+  const expenses = financeList
+    .filter((entry) => entry.kind === "expense" && entry.status !== "canceled")
+    .reduce((sum, entry) => sum + entry.amount, 0)
+
+  const rentRoll = tenantList.map((tenant) => {
+    const property = propertyList.find((item) => item._id === tenant.propertyId)
+    const tenantBills = billList.filter((bill) => bill.tenantId === tenant._id)
+    const openBalance = tenantBills
+      .filter((bill) => ["unpaid", "partial", "overdue"].includes(bill.status))
+      .reduce((sum, bill) => sum + bill.amount, 0)
+    const lastPaid = tenant.paymentRecords
+      ?.filter((record) => record.status === "paid")
+      .sort((a, b) => b.monthKey.localeCompare(a.monthKey))[0]
+
+    return {
+      id: tenant._id,
+      tenantName: tenant.fullName,
+      propertyName: property?.name ?? "Unknown property",
+      monthlyRent: tenant.monthlyRent ?? 0,
+      dueDay: tenant.rentDueDay ?? null,
+      openBalance,
+      lastPaidMonth: lastPaid?.monthKey ?? "None",
+      status: openBalance > 0 ? "Balance due" : "Clear",
+    }
+  })
+
+  return (
+    <div className="space-y-6">
+      <OwnerPageHero
+        icon={FileChartColumn}
+        badge="Finance"
+        title="Finance dashboard"
+        body="Owner rent roll, arrears, collection, income, expense, and net view from existing billing and finance records."
+      />
+
+      <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
+        {[
+          ["Expected rent", formatMoney(expectedRent), "Sum of active tenant monthly rent."],
+          ["Collected rent", formatMoney(collectedRent), "Paid rent bills for current month."],
+          ["Open balance", formatMoney(dueAmount), "Unpaid, partial, and overdue bill total."],
+          ["Overdue bills", overdueBills.length, "Bills marked overdue."],
+          ["Manual income", formatMoney(earnings), "Finance entries marked earning."],
+          ["Net manual", formatMoney(earnings - expenses), "Manual income minus manual expenses."],
+        ].map(([label, value, help]) => (
+          <Card key={label} className="shadow-none">
+            <CardContent className="flex items-center justify-between gap-3 p-4">
+              <div>
+                <p className="text-xs uppercase tracking-wide text-slate-500">{label}</p>
+                <p className="mt-1 text-xl font-semibold text-slate-950">{value}</p>
+              </div>
+              <HelpMark label={String(help)} />
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      <WithBone name="owner-page-finance" loading={tenants.isLoading || bills.isLoading || financeEntries.isLoading} fallback={<DashboardTableSkeleton />}>
+        <Card className="shadow-none">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              Rent roll
+              <HelpMark label="Each row shows tenant monthly rent, due day, last paid month, and outstanding bill balance." />
+            </CardTitle>
+            <CardDescription>Use Billing to generate rent bills, mark paid, or collect via Stripe.</CardDescription>
+          </CardHeader>
+          <CardContent className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Tenant</TableHead>
+                  <TableHead>Property</TableHead>
+                  <TableHead>Rent</TableHead>
+                  <TableHead>Due day</TableHead>
+                  <TableHead>Last paid</TableHead>
+                  <TableHead>Open balance</TableHead>
+                  <TableHead>Status</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {rentRoll.length ? rentRoll.map((row) => (
+                  <TableRow key={row.id}>
+                    <TableCell className="font-medium text-slate-950">{row.tenantName}</TableCell>
+                    <TableCell>{row.propertyName}</TableCell>
+                    <TableCell>{formatMoney(row.monthlyRent)}</TableCell>
+                    <TableCell>{row.dueDay ?? "Unset"}</TableCell>
+                    <TableCell>{row.lastPaidMonth}</TableCell>
+                    <TableCell>{formatMoney(row.openBalance)}</TableCell>
+                    <TableCell>
+                      <Badge variant={row.openBalance > 0 ? "destructive" : "default"}>{row.status}</Badge>
+                    </TableCell>
+                  </TableRow>
+                )) : (
+                  <TableRow>
+                    <TableCell colSpan={7}>
+                      <Empty>
+                        <EmptyHeader>
+                          <EmptyMedia variant="icon"><FileChartColumn /></EmptyMedia>
+                          <EmptyTitle>No rent roll yet</EmptyTitle>
+                          <EmptyDescription>Add tenants with monthly rent to build finance view.</EmptyDescription>
+                        </EmptyHeader>
+                      </Empty>
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      </WithBone>
+    </div>
+  )
+}
+
 export function TenantOwnerBillingPage() {
   const searchParams = useSearchParams()
   const properties = useOwnerPropertiesQuery()
@@ -2311,11 +3021,15 @@ export function TenantOwnerBillingPage() {
   const stripeSettings = useOrganizationStripeSettingsQuery()
   const recordPayment = useOwnerRecordTenantPaymentMutation()
   const updateBill = useOwnerUpdateBillMutation()
+  const generateMonthlyBills = useOwnerGenerateMonthlyBillsMutation()
   const [propertyFilter, setPropertyFilter] = useState("")
   const [tenantFilter, setTenantFilter] = useState(searchParams.get("tenantId") ?? "")
   const [monthFilter, setMonthFilter] = useState(new Date().toISOString().slice(0, 7))
   const [statusFilter, setStatusFilter] = useState("all")
   const [typeFilter, setTypeFilter] = useState<"all" | "monthly" | "bill">("all")
+  const [lateFeeAmount, setLateFeeAmount] = useState("")
+  const [graceDays, setGraceDays] = useState("0")
+  const [applyLateFees, setApplyLateFees] = useState(false)
   const propertyList = Array.isArray(properties.data) ? properties.data : []
   const tenantList = Array.isArray(tenants.data) ? tenants.data : []
   const bills = useOwnerBillsQuery({
@@ -2426,6 +3140,56 @@ export function TenantOwnerBillingPage() {
                 <SelectContent><SelectGroup>{["all", "monthly", "bill"].map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}</SelectGroup></SelectContent>
               </Select>
             </Field>
+          </div>
+
+          <div className="rounded-xl border bg-slate-50 p-4">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <p className="text-sm font-medium text-slate-950">Auto monthly rent bills</p>
+                <HelpMark label="Creates one unpaid rent bill per active renter for selected month. Existing bills are skipped, so duplicates are avoided." />
+              </div>
+              <Button
+                type="button"
+                className="bg-blue-700 text-white hover:bg-blue-800"
+                disabled={generateMonthlyBills.isPending || !monthFilter}
+                onClick={() =>
+                  generateMonthlyBills.mutate({
+                    monthKey: monthFilter,
+                    propertyId: propertyFilter || undefined,
+                    applyLateFees,
+                    lateFeeAmount: Number(lateFeeAmount || "0") || undefined,
+                    graceDays: Number(graceDays || "0") || undefined,
+                  })
+                }
+              >
+                {generateMonthlyBills.isPending ? "Generating..." : "Generate rent bills"}
+              </Button>
+            </div>
+            <div className="grid gap-3 md:grid-cols-[1fr_1fr_auto]">
+              <Field>
+                <div className="flex items-center gap-2">
+                  <FieldLabel>Late fee amount</FieldLabel>
+                  <HelpMark label="Optional fixed amount added to overdue existing rent bills for this month." />
+                </div>
+                <Input type="number" value={lateFeeAmount} onChange={(event) => setLateFeeAmount(event.target.value ?? "")} />
+              </Field>
+              <Field>
+                <div className="flex items-center gap-2">
+                  <FieldLabel>Grace days</FieldLabel>
+                  <HelpMark label="Days after due date before unpaid rent is marked overdue." />
+                </div>
+                <Input type="number" min={0} value={graceDays} onChange={(event) => setGraceDays(event.target.value ?? "0")} />
+              </Field>
+              <Field className="justify-end">
+                <div className="flex items-center gap-3 rounded-lg border bg-white px-3 py-2">
+                  <Switch checked={applyLateFees} onCheckedChange={setApplyLateFees} />
+                  <div className="flex items-center gap-2">
+                    <FieldLabel>Apply late fees</FieldLabel>
+                    <HelpMark label="When on, overdue unpaid rent bills get the late fee once." />
+                  </div>
+                </div>
+              </Field>
+            </div>
           </div>
 
           <div className="grid gap-3 md:grid-cols-4">
@@ -3325,6 +4089,942 @@ export function TenantOwnerVendorsPage() {
   )
 }
 
+export function TenantOwnerAssetsPage() {
+  const properties = useOwnerPropertiesQuery({ limit: 500 })
+  const units = useOwnerUnitsQuery({ limit: 1000 })
+  const assets = useOwnerAssetsQuery({ limit: 1000 })
+  const createAsset = useOwnerCreateAssetMutation()
+  const updateAsset = useOwnerUpdateAssetMutation()
+  const propertyList = Array.isArray(properties.data) ? properties.data : []
+  const unitList = Array.isArray(units.data) ? units.data : []
+  const assetList = Array.isArray(assets.data) ? assets.data : []
+  const [isCreateOpen, setIsCreateOpen] = useState(false)
+  const [assetImages, setAssetImages] = useState<string[]>([])
+  const [assetDocs, setAssetDocs] = useState<string[]>([])
+  const [form, setForm] = useState({
+    propertyId: "",
+    unitId: "",
+    name: "",
+    category: "",
+    serialNumber: "",
+    model: "",
+    purchaseDate: "",
+    warrantyEnd: "",
+    lastServiceAt: "",
+    nextServiceAt: "",
+    status: "active",
+    notes: "",
+  })
+  const [search, setSearch] = useState("")
+  const [statusFilter, setStatusFilter] = useState("all")
+  const [propertyFilter, setPropertyFilter] = useState("all")
+  const [categoryFilter, setCategoryFilter] = useState("all")
+  const [page, setPage] = useState(1)
+  const pageSize = 8
+  const now = new Date()
+  const serviceDueCount = assetList.filter((asset) => asset.nextServiceAt && new Date(asset.nextServiceAt) <= now).length
+  const warrantyEndingCount = assetList.filter((asset) => {
+    if (!asset.warrantyEnd) return false
+    const days = Math.ceil((new Date(asset.warrantyEnd).getTime() - now.getTime()) / 86400000)
+    return days >= 0 && days <= 30
+  }).length
+  const categoryOptions = Array.from(new Set(assetList.map((asset) => asset.category).filter(Boolean))).sort()
+  const filteredAssets = useMemo(() => {
+    const needle = search.trim().toLowerCase()
+    return assetList.filter((asset) => {
+      if (statusFilter !== "all" && asset.status !== statusFilter) return false
+      if (propertyFilter !== "all" && asset.propertyId !== propertyFilter) return false
+      if (categoryFilter !== "all" && asset.category !== categoryFilter) return false
+      if (!needle) return true
+      const property = propertyList.find((item) => item._id === asset.propertyId)
+      const unit = unitList.find((item) => item._id === asset.unitId)
+      return [
+        asset.name,
+        asset.category,
+        asset.serialNumber,
+        asset.model,
+        asset.status,
+        property?.name,
+        unit?.unitNumber,
+      ].filter(Boolean).join(" ").toLowerCase().includes(needle)
+    })
+  }, [assetList, categoryFilter, propertyFilter, propertyList, search, statusFilter, unitList])
+  const pagedAssets = paginateItems(filteredAssets, page, pageSize)
+
+  useEffect(() => {
+    setPage(1)
+  }, [search, statusFilter, propertyFilter, categoryFilter])
+
+  return (
+    <div className="space-y-6">
+      <OwnerPageHero
+        icon={Wrench}
+        badge="Assets"
+        title="Asset management"
+        body="Track equipment, serials, warranty dates, service dates, documents, and maintenance status."
+      />
+
+      <div className="grid gap-3 md:grid-cols-3">
+        {[
+          ["Assets", assetList.length, "Equipment and appliances tracked by property or unit."],
+          ["Service due", serviceDueCount, "Assets whose next service date is today or earlier."],
+          ["Warranty ending", warrantyEndingCount, "Assets whose warranty ends within 30 days."],
+        ].map(([label, value, help]) => (
+          <Card key={label} className="shadow-none">
+            <CardContent className="flex items-center justify-between p-4">
+              <div>
+                <p className="text-xs uppercase tracking-wide text-slate-500">{label}</p>
+                <p className="mt-1 text-2xl font-semibold text-slate-950">{value}</p>
+              </div>
+              <HelpMark label={String(help)} />
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      <div className="flex justify-end">
+        <CreateSheet open={isCreateOpen} onOpenChange={setIsCreateOpen} title="Add asset" description="Create an equipment record for warranty and service tracking." triggerLabel="Add asset">
+          <form
+            className="space-y-4"
+            onSubmit={(event) => {
+              event.preventDefault()
+              createAsset.mutate({
+                propertyId: form.propertyId,
+                unitId: form.unitId || undefined,
+                name: form.name,
+                category: form.category,
+                serialNumber: form.serialNumber || undefined,
+                model: form.model || undefined,
+                purchaseDate: form.purchaseDate || undefined,
+                warrantyEnd: form.warrantyEnd || undefined,
+                lastServiceAt: form.lastServiceAt || undefined,
+                nextServiceAt: form.nextServiceAt || undefined,
+                status: form.status as "active" | "maintenance" | "retired",
+                images: assetImages,
+                documents: assetDocs,
+                notes: form.notes || undefined,
+              }, {
+                onSuccess: () => {
+                  setForm({ propertyId: "", unitId: "", name: "", category: "", serialNumber: "", model: "", purchaseDate: "", warrantyEnd: "", lastServiceAt: "", nextServiceAt: "", status: "active", notes: "" })
+                  setAssetImages([])
+                  setAssetDocs([])
+                  setIsCreateOpen(false)
+                },
+              })
+            }}
+          >
+            <FieldGroup>
+              <Field>
+                <FieldLabel>Property</FieldLabel>
+                <Select value={form.propertyId} onValueChange={(value) => setForm((current) => ({ ...current, propertyId: value ?? "", unitId: "" }))}>
+                  <SelectTrigger className="w-full"><SelectValue placeholder="Select property" /></SelectTrigger>
+                  <SelectContent><SelectGroup>{propertyList.map((property) => <SelectItem key={property._id} value={property._id}>{property.name}</SelectItem>)}</SelectGroup></SelectContent>
+                </Select>
+              </Field>
+              <Field>
+                <FieldLabel>Unit optional</FieldLabel>
+                <Select value={form.unitId || "__none__"} onValueChange={(value) => setForm((current) => ({ ...current, unitId: value === "__none__" ? "" : (value ?? "") }))}>
+                  <SelectTrigger className="w-full"><SelectValue placeholder="Whole property asset" /></SelectTrigger>
+                  <SelectContent><SelectGroup><SelectItem value="__none__">Whole property</SelectItem>{unitList.filter((unit) => !form.propertyId || unit.propertyId === form.propertyId).map((unit) => <SelectItem key={unit._id} value={unit._id}>{unit.unitNumber}</SelectItem>)}</SelectGroup></SelectContent>
+                </Select>
+              </Field>
+              <div className="grid gap-3 md:grid-cols-2">
+                <Field><FieldLabel>Name</FieldLabel><Input value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value ?? "" }))} /></Field>
+                <Field>
+                  <div className="flex items-center gap-2">
+                    <FieldLabel>Category</FieldLabel>
+                    <HelpMark label="Examples: HVAC, elevator, generator, pump, appliance, security." />
+                  </div>
+                  <Input value={form.category} onChange={(event) => setForm((current) => ({ ...current, category: event.target.value ?? "" }))} />
+                </Field>
+              </div>
+              <div className="grid gap-3 md:grid-cols-2">
+                <Field><FieldLabel>Serial number</FieldLabel><Input value={form.serialNumber} onChange={(event) => setForm((current) => ({ ...current, serialNumber: event.target.value ?? "" }))} /></Field>
+                <Field><FieldLabel>Model</FieldLabel><Input value={form.model} onChange={(event) => setForm((current) => ({ ...current, model: event.target.value ?? "" }))} /></Field>
+              </div>
+              <div className="grid gap-3 md:grid-cols-4">
+                <Field><FieldLabel>Purchase</FieldLabel><Input type="date" value={form.purchaseDate} onChange={(event) => setForm((current) => ({ ...current, purchaseDate: event.target.value ?? "" }))} /></Field>
+                <Field><FieldLabel>Warranty end</FieldLabel><Input type="date" value={form.warrantyEnd} onChange={(event) => setForm((current) => ({ ...current, warrantyEnd: event.target.value ?? "" }))} /></Field>
+                <Field><FieldLabel>Last service</FieldLabel><Input type="date" value={form.lastServiceAt} onChange={(event) => setForm((current) => ({ ...current, lastServiceAt: event.target.value ?? "" }))} /></Field>
+                <Field>
+                  <div className="flex items-center gap-2">
+                    <FieldLabel>Next service</FieldLabel>
+                    <HelpMark label="Used to show service due count and help schedule preventive maintenance." />
+                  </div>
+                  <Input type="date" value={form.nextServiceAt} onChange={(event) => setForm((current) => ({ ...current, nextServiceAt: event.target.value ?? "" }))} />
+                </Field>
+              </div>
+              <Field><FieldLabel>Status</FieldLabel><Select value={form.status} onValueChange={(value) => setForm((current) => ({ ...current, status: value ?? "active" }))}><SelectTrigger className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectGroup>{["active", "maintenance", "retired"].map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}</SelectGroup></SelectContent></Select></Field>
+              <UploadCollectionField label="Asset images" accept="image/*" kind="image" values={assetImages} onChange={setAssetImages} />
+              <UploadCollectionField label="Asset documents" accept=".pdf,.doc,.docx,image/*" kind="file" values={assetDocs} onChange={setAssetDocs} />
+              <Field><FieldLabel>Notes</FieldLabel><Textarea value={form.notes} onChange={(event) => setForm((current) => ({ ...current, notes: event.target.value ?? "" }))} /></Field>
+            </FieldGroup>
+            <Button type="submit" disabled={createAsset.isPending || !form.propertyId || !form.name || !form.category}>Create asset</Button>
+          </form>
+        </CreateSheet>
+      </div>
+
+      <WithBone name="owner-page-assets" loading={assets.isLoading || properties.isLoading || units.isLoading} fallback={<DashboardTableSkeleton />}>
+        <Card className="shadow-none">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">Asset register <HelpMark label="Use status buttons to move equipment into maintenance or retire it without deleting history." /></CardTitle>
+            <CardDescription>{filteredAssets.length} matching assets. Equipment lifecycle, warranty, and service schedule.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid gap-3 xl:grid-cols-4">
+              <Input value={search} onChange={(event) => setSearch(event.target.value ?? "")} placeholder="Search assets" />
+              <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+                <option value="all">All status</option>
+                {["active", "maintenance", "retired"].map((item) => <option key={item} value={item}>{item}</option>)}
+              </select>
+              <select value={propertyFilter} onChange={(event) => setPropertyFilter(event.target.value)} className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+                <option value="all">All properties</option>
+                {propertyList.map((property) => <option key={property._id} value={property._id}>{property.name}</option>)}
+              </select>
+              <select value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)} className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+                <option value="all">All categories</option>
+                {categoryOptions.map((category) => <option key={category} value={category}>{category}</option>)}
+              </select>
+            </div>
+            {pagedAssets.length ? pagedAssets.map((asset) => {
+              const property = propertyList.find((item) => item._id === asset.propertyId)
+              const unit = unitList.find((item) => item._id === asset.unitId)
+              return (
+                <div key={asset._id} className="rounded-xl border p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <p className="font-medium text-slate-950">{asset.name}</p>
+                      <p className="text-sm text-slate-600">{property?.name ?? "Unknown property"} {unit ? `- ${unit.unitNumber}` : "- whole property"}</p>
+                    </div>
+                    <Badge variant={asset.status === "maintenance" ? "outline" : asset.status === "retired" ? "secondary" : "default"}>{asset.status}</Badge>
+                  </div>
+                  <div className="mt-3 grid gap-3 rounded-xl bg-slate-50 p-3 text-sm md:grid-cols-5">
+                    <div><p className="text-xs uppercase tracking-wide text-slate-500">Category</p><p className="font-medium text-slate-950">{asset.category}</p></div>
+                    <div><p className="text-xs uppercase tracking-wide text-slate-500">Serial</p><p className="font-medium text-slate-950">{asset.serialNumber ?? "N/A"}</p></div>
+                    <div><p className="text-xs uppercase tracking-wide text-slate-500">Warranty</p><p className="font-medium text-slate-950">{formatDateLabel(asset.warrantyEnd)}</p></div>
+                    <div><p className="text-xs uppercase tracking-wide text-slate-500">Next service</p><p className="font-medium text-slate-950">{formatDateLabel(asset.nextServiceAt)}</p></div>
+                    <div><p className="text-xs uppercase tracking-wide text-slate-500">Files</p><p className="font-medium text-slate-950">{(asset.images?.length ?? 0) + (asset.documents?.length ?? 0)}</p></div>
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {["active", "maintenance", "retired"].map((status) => (
+                      <Button key={status} type="button" size="sm" variant={asset.status === status ? "default" : "outline"} onClick={() => updateAsset.mutate({ id: asset._id, payload: { status: status as "active" | "maintenance" | "retired" } })}>{status}</Button>
+                    ))}
+                  </div>
+                </div>
+              )
+            }) : (
+              <Empty>
+                <EmptyHeader>
+                  <EmptyMedia variant="icon"><Wrench /></EmptyMedia>
+                  <EmptyTitle>No assets yet</EmptyTitle>
+                  <EmptyDescription>Add equipment or change filters to see assets.</EmptyDescription>
+                </EmptyHeader>
+              </Empty>
+            )}
+            <PaginationControls page={page} total={filteredAssets.length} pageSize={pageSize} onPageChange={setPage} />
+          </CardContent>
+        </Card>
+      </WithBone>
+    </div>
+  )
+}
+
+export function TenantOwnerVendorQuotesPage() {
+  const vendors = useOwnerVendorsQuery()
+  const properties = useOwnerPropertiesQuery({ limit: 500 })
+  const units = useOwnerUnitsQuery({ limit: 1000 })
+  const quotes = useOwnerVendorQuotesQuery({ limit: 500 })
+  const createQuote = useOwnerCreateVendorQuoteMutation()
+  const updateQuote = useOwnerUpdateVendorQuoteMutation()
+  const vendorList = Array.isArray(vendors.data) ? vendors.data : []
+  const propertyList = Array.isArray(properties.data) ? properties.data : []
+  const unitList = Array.isArray(units.data) ? units.data : []
+  const quoteList = Array.isArray(quotes.data) ? quotes.data : []
+  const [isCreateOpen, setIsCreateOpen] = useState(false)
+  const [quoteFiles, setQuoteFiles] = useState<string[]>([])
+  const [form, setForm] = useState({
+    vendorId: "",
+    propertyId: "",
+    unitId: "",
+    title: "",
+    description: "",
+    amount: "",
+    currency: "USD",
+    status: "requested",
+    ownerNote: "",
+  })
+  const approvedValue = quoteList
+    .filter((quote) => quote.status === "approved")
+    .reduce((sum, quote) => sum + (quote.amount ?? 0), 0)
+  const pendingCount = quoteList.filter((quote) => ["requested", "submitted"].includes(quote.status)).length
+
+  return (
+    <div className="space-y-6">
+      <OwnerPageHero
+        icon={BriefcaseBusiness}
+        badge="Vendor quotes"
+        title="Vendor quotes"
+        body="Request vendor quotes, compare submitted prices, approve work, and keep quote files tied to property records."
+      />
+
+      <div className="grid gap-3 md:grid-cols-3">
+        {[
+          ["Quotes", quoteList.length, "All requested, submitted, approved, and rejected vendor quotes."],
+          ["Pending", pendingCount, "Quotes waiting for submission or owner decision."],
+          ["Approved value", formatMoney(approvedValue), "Total approved vendor quote amount."],
+        ].map(([label, value, help]) => (
+          <Card key={label} className="shadow-none">
+            <CardContent className="flex items-center justify-between p-4">
+              <div>
+                <p className="text-xs uppercase tracking-wide text-slate-500">{label}</p>
+                <p className="mt-1 text-2xl font-semibold text-slate-950">{value}</p>
+              </div>
+              <HelpMark label={String(help)} />
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      <div className="flex justify-end">
+        <CreateSheet open={isCreateOpen} onOpenChange={setIsCreateOpen} title="Request vendor quote" description="Create a quote request or record a submitted vendor price." triggerLabel="Add quote">
+          <form
+            className="space-y-4"
+            onSubmit={(event) => {
+              event.preventDefault()
+              createQuote.mutate({
+                vendorId: form.vendorId,
+                propertyId: form.propertyId,
+                unitId: form.unitId || undefined,
+                title: form.title,
+                description: form.description || undefined,
+                amount: Number(form.amount || "0") || undefined,
+                currency: form.currency || undefined,
+                status: form.status as "requested" | "submitted" | "approved" | "rejected",
+                attachments: quoteFiles,
+                ownerNote: form.ownerNote || undefined,
+              }, {
+                onSuccess: () => {
+                  setForm({ vendorId: "", propertyId: "", unitId: "", title: "", description: "", amount: "", currency: "USD", status: "requested", ownerNote: "" })
+                  setQuoteFiles([])
+                  setIsCreateOpen(false)
+                },
+              })
+            }}
+          >
+            <FieldGroup>
+              <Field>
+                <div className="flex items-center gap-2">
+                  <FieldLabel>Vendor</FieldLabel>
+                  <HelpMark label="Pick vendor who should price or perform the work." />
+                </div>
+                <Select value={form.vendorId} onValueChange={(value) => setForm((current) => ({ ...current, vendorId: value ?? "" }))}>
+                  <SelectTrigger className="w-full"><SelectValue placeholder="Select vendor" /></SelectTrigger>
+                  <SelectContent><SelectGroup>{vendorList.map((vendor) => <SelectItem key={vendor._id} value={vendor._id}>{vendor.name}</SelectItem>)}</SelectGroup></SelectContent>
+                </Select>
+              </Field>
+              <Field>
+                <FieldLabel>Property</FieldLabel>
+                <Select value={form.propertyId} onValueChange={(value) => setForm((current) => ({ ...current, propertyId: value ?? "", unitId: "" }))}>
+                  <SelectTrigger className="w-full"><SelectValue placeholder="Select property" /></SelectTrigger>
+                  <SelectContent><SelectGroup>{propertyList.map((property) => <SelectItem key={property._id} value={property._id}>{property.name}</SelectItem>)}</SelectGroup></SelectContent>
+                </Select>
+              </Field>
+              <Field><FieldLabel>Unit optional</FieldLabel><Select value={form.unitId || "__none__"} onValueChange={(value) => setForm((current) => ({ ...current, unitId: value === "__none__" ? "" : (value ?? "") }))}><SelectTrigger className="w-full"><SelectValue placeholder="Whole property" /></SelectTrigger><SelectContent><SelectGroup><SelectItem value="__none__">Whole property</SelectItem>{unitList.filter((unit) => !form.propertyId || unit.propertyId === form.propertyId).map((unit) => <SelectItem key={unit._id} value={unit._id}>{unit.unitNumber}</SelectItem>)}</SelectGroup></SelectContent></Select></Field>
+              <Field><FieldLabel>Title</FieldLabel><Input value={form.title} onChange={(event) => setForm((current) => ({ ...current, title: event.target.value ?? "" }))} /></Field>
+              <Field><FieldLabel>Description</FieldLabel><Textarea value={form.description} onChange={(event) => setForm((current) => ({ ...current, description: event.target.value ?? "" }))} /></Field>
+              <div className="grid gap-3 md:grid-cols-3">
+                <Field><FieldLabel>Amount</FieldLabel><Input type="number" value={form.amount} onChange={(event) => setForm((current) => ({ ...current, amount: event.target.value ?? "" }))} /></Field>
+                <Field><FieldLabel>Currency</FieldLabel><Input value={form.currency} onChange={(event) => setForm((current) => ({ ...current, currency: event.target.value ?? "USD" }))} /></Field>
+                <Field><FieldLabel>Status</FieldLabel><Select value={form.status} onValueChange={(value) => setForm((current) => ({ ...current, status: value ?? "requested" }))}><SelectTrigger className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectGroup>{["requested", "submitted", "approved", "rejected"].map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}</SelectGroup></SelectContent></Select></Field>
+              </div>
+              <UploadCollectionField label="Quote files" accept=".pdf,.doc,.docx,.xls,.xlsx,image/*" kind="file" values={quoteFiles} onChange={setQuoteFiles} />
+              <Field><FieldLabel>Owner note</FieldLabel><Textarea value={form.ownerNote} onChange={(event) => setForm((current) => ({ ...current, ownerNote: event.target.value ?? "" }))} /></Field>
+            </FieldGroup>
+            <Button type="submit" disabled={createQuote.isPending || !form.vendorId || !form.propertyId || !form.title}>Save quote</Button>
+          </form>
+        </CreateSheet>
+      </div>
+
+      <WithBone name="owner-page-vendor-quotes" loading={quotes.isLoading || vendors.isLoading || properties.isLoading} fallback={<DashboardTableSkeleton />}>
+        <Card className="shadow-none">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">Quote approvals <HelpMark label="Approve quote when owner accepts price. Reject keeps history without deleting quote." /></CardTitle>
+            <CardDescription>Vendor price workflow and approval state.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {quoteList.length ? quoteList.map((quote) => {
+              const vendor = vendorList.find((item) => item._id === quote.vendorId)
+              const property = propertyList.find((item) => item._id === quote.propertyId)
+              const unit = unitList.find((item) => item._id === quote.unitId)
+              return (
+                <div key={quote._id} className="rounded-xl border p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <p className="font-medium text-slate-950">{quote.title}</p>
+                      <p className="text-sm text-slate-600">{vendor?.name ?? "Unknown vendor"} - {property?.name ?? "Unknown property"} {unit ? `- ${unit.unitNumber}` : ""}</p>
+                    </div>
+                    <Badge variant={quote.status === "approved" ? "default" : quote.status === "rejected" ? "destructive" : "outline"}>{quote.status}</Badge>
+                  </div>
+                  <div className="mt-3 grid gap-3 rounded-xl bg-slate-50 p-3 text-sm md:grid-cols-4">
+                    <div><p className="text-xs uppercase tracking-wide text-slate-500">Amount</p><p className="font-medium text-slate-950">{formatMoney(quote.amount ?? 0, quote.currency ?? "USD")}</p></div>
+                    <div><p className="text-xs uppercase tracking-wide text-slate-500">Files</p><p className="font-medium text-slate-950">{quote.attachments?.length ?? 0}</p></div>
+                    <div><p className="text-xs uppercase tracking-wide text-slate-500">Approved</p><p className="font-medium text-slate-950">{formatDateLabel(quote.approvedAt)}</p></div>
+                    <div><p className="text-xs uppercase tracking-wide text-slate-500">Note</p><p className="font-medium text-slate-950">{quote.ownerNote ?? "No note"}</p></div>
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <Button type="button" size="sm" variant="outline" onClick={() => updateQuote.mutate({ id: quote._id, payload: { status: "submitted" } })}>Submitted</Button>
+                    <Button type="button" size="sm" variant="outline" onClick={() => updateQuote.mutate({ id: quote._id, payload: { status: "approved" } })}>Approve</Button>
+                    <Button type="button" size="sm" variant="outline" onClick={() => updateQuote.mutate({ id: quote._id, payload: { status: "rejected" } })}>Reject</Button>
+                  </div>
+                </div>
+              )
+            }) : (
+              <Empty>
+                <EmptyHeader>
+                  <EmptyMedia variant="icon"><BriefcaseBusiness /></EmptyMedia>
+                  <EmptyTitle>No quotes yet</EmptyTitle>
+                  <EmptyDescription>Add a quote request when vendor pricing is needed.</EmptyDescription>
+                </EmptyHeader>
+              </Empty>
+            )}
+          </CardContent>
+        </Card>
+      </WithBone>
+    </div>
+  )
+}
+
+function toggleChannel(channels: Array<"email" | "sms">, channel: "email" | "sms") {
+  return channels.includes(channel)
+    ? channels.filter((item) => item !== channel)
+    : [...channels, channel]
+}
+
+export function TenantOwnerNotificationsPage() {
+  const settings = useOwnerNotificationSettingsQuery()
+  const templates = useOwnerNotificationTemplatesQuery()
+  const tenants = useOwnerTenantsQuery({ limit: 1000 })
+  const saveSettings = useOwnerSaveNotificationSettingsMutation()
+  const createTemplate = useOwnerCreateNotificationTemplateMutation()
+  const sendTemplate = useOwnerSendNotificationTemplateMutation()
+  const templateList = Array.isArray(templates.data) ? templates.data : []
+  const tenantList = Array.isArray(tenants.data) ? tenants.data : []
+  const [selectedTenantIds, setSelectedTenantIds] = useState<string[]>([])
+  const [sendForm, setSendForm] = useState({ templateId: "", channels: ["email"] as Array<"email" | "sms"> })
+  const [templateForm, setTemplateForm] = useState({
+    name: "",
+    subject: "",
+    body: "Hi {{tenant_full_name}}, this is a notice from {{property_name}}.",
+    channels: ["email"] as Array<"email" | "sms">,
+    purpose: "manual",
+  })
+  const [settingsForm, setSettingsForm] = useState({
+    overdueRentEnabled: false,
+    overdueRentDaysAfterDue: "1",
+    overdueRentRepeatEveryDays: "3",
+    overdueRentChannels: ["email"] as Array<"email" | "sms">,
+    overdueRentTemplateId: "",
+    inspectionEnabled: false,
+    inspectionChannels: ["email"] as Array<"email" | "sms">,
+    inspectionTemplateId: "",
+    recurringMaintenanceEnabled: false,
+    recurringMaintenanceChannels: ["email"] as Array<"email" | "sms">,
+    recurringMaintenanceTemplateId: "",
+    tenantCreatedChannels: [] as Array<"email" | "sms">,
+    tenantCreatedTemplateId: "",
+    workerCreatedChannels: [] as Array<"email" | "sms">,
+    workerCreatedTemplateId: "",
+    noticeCreatedChannels: [] as Array<"email" | "sms">,
+    noticeCreatedTemplateId: "",
+  })
+
+  useEffect(() => {
+    const data = settings.data
+    if (!data) return
+    setSettingsForm({
+      overdueRentEnabled: data.overdueRentEnabled,
+      overdueRentDaysAfterDue: String(data.overdueRentDaysAfterDue ?? 1),
+      overdueRentRepeatEveryDays: String(data.overdueRentRepeatEveryDays ?? 3),
+      overdueRentChannels: data.overdueRentChannels?.length ? data.overdueRentChannels : ["email"],
+      overdueRentTemplateId: data.overdueRentTemplateId ?? "",
+      inspectionEnabled: Boolean(data.inspectionEnabled),
+      inspectionChannels: data.inspectionChannels?.length ? data.inspectionChannels : ["email"],
+      inspectionTemplateId: data.inspectionTemplateId ?? "",
+      recurringMaintenanceEnabled: Boolean(data.recurringMaintenanceEnabled),
+      recurringMaintenanceChannels: data.recurringMaintenanceChannels?.length ? data.recurringMaintenanceChannels : ["email"],
+      recurringMaintenanceTemplateId: data.recurringMaintenanceTemplateId ?? "",
+      tenantCreatedChannels: data.tenantCreatedChannels ?? [],
+      tenantCreatedTemplateId: data.tenantCreatedTemplateId ?? "",
+      workerCreatedChannels: data.workerCreatedChannels ?? [],
+      workerCreatedTemplateId: data.workerCreatedTemplateId ?? "",
+      noticeCreatedChannels: data.noticeCreatedChannels ?? [],
+      noticeCreatedTemplateId: data.noticeCreatedTemplateId ?? "",
+    })
+  }, [settings.data])
+
+  const allSelected = selectedTenantIds.length === tenantList.length && tenantList.length > 0
+
+  return (
+    <div className="space-y-6">
+      <OwnerPageHero
+        icon={Bell}
+        badge="Notifications"
+        title="Notifications"
+        body="Automate overdue rent reminders, choose email/SMS rules, build templates, and send messages to one tenant or many."
+      />
+
+      <div className="grid gap-4 xl:grid-cols-2">
+        <Card className="shadow-none">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              Automation rules
+              <HelpMark label="Scheduler checks overdue rent hourly. Email/SMS are fire-and-forget through server delivery services." />
+            </CardTitle>
+            <CardDescription>Owner chooses when automatic email or text is used.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form
+              className="space-y-4"
+              onSubmit={(event) => {
+                event.preventDefault()
+                saveSettings.mutate({
+                  overdueRentEnabled: settingsForm.overdueRentEnabled,
+                  overdueRentDaysAfterDue: Number(settingsForm.overdueRentDaysAfterDue || "1"),
+                  overdueRentRepeatEveryDays: Number(settingsForm.overdueRentRepeatEveryDays || "3"),
+                  overdueRentChannels: settingsForm.overdueRentChannels,
+                  overdueRentTemplateId: settingsForm.overdueRentTemplateId || undefined,
+                  inspectionEnabled: settingsForm.inspectionEnabled,
+                  inspectionChannels: settingsForm.inspectionChannels,
+                  inspectionTemplateId: settingsForm.inspectionTemplateId || undefined,
+                  recurringMaintenanceEnabled: settingsForm.recurringMaintenanceEnabled,
+                  recurringMaintenanceChannels: settingsForm.recurringMaintenanceChannels,
+                  recurringMaintenanceTemplateId: settingsForm.recurringMaintenanceTemplateId || undefined,
+                  tenantCreatedChannels: settingsForm.tenantCreatedChannels,
+                  tenantCreatedTemplateId: settingsForm.tenantCreatedTemplateId || undefined,
+                  workerCreatedChannels: settingsForm.workerCreatedChannels,
+                  workerCreatedTemplateId: settingsForm.workerCreatedTemplateId || undefined,
+                  noticeCreatedChannels: settingsForm.noticeCreatedChannels,
+                  noticeCreatedTemplateId: settingsForm.noticeCreatedTemplateId || undefined,
+                })
+              }}
+            >
+              <div className="flex items-center justify-between rounded-xl border p-3">
+                <div className="flex items-center gap-2">
+                  <p className="text-sm font-medium text-slate-950">Overdue rent reminder</p>
+                  <HelpMark label="If rent bill is unpaid after due date plus grace days, tenant gets selected channels." />
+                </div>
+                <Switch checked={settingsForm.overdueRentEnabled} onCheckedChange={(value) => setSettingsForm((current) => ({ ...current, overdueRentEnabled: value }))} />
+              </div>
+              <div className="grid gap-3 md:grid-cols-2">
+                <Field><FieldLabel>Grace days</FieldLabel><Input type="number" min={0} value={settingsForm.overdueRentDaysAfterDue} onChange={(event) => setSettingsForm((current) => ({ ...current, overdueRentDaysAfterDue: event.target.value ?? "1" }))} /></Field>
+                <Field><FieldLabel>Repeat every days</FieldLabel><Input type="number" min={1} value={settingsForm.overdueRentRepeatEveryDays} onChange={(event) => setSettingsForm((current) => ({ ...current, overdueRentRepeatEveryDays: event.target.value ?? "3" }))} /></Field>
+              </div>
+              <Field>
+                <FieldLabel>Overdue template</FieldLabel>
+                <Select value={settingsForm.overdueRentTemplateId || "__default__"} onValueChange={(value) => setSettingsForm((current) => ({ ...current, overdueRentTemplateId: value === "__default__" ? "" : (value ?? "") }))}>
+                  <SelectTrigger className="w-full"><SelectValue placeholder="Default message" /></SelectTrigger>
+                  <SelectContent><SelectGroup><SelectItem value="__default__">Default overdue message</SelectItem>{templateList.map((template) => <SelectItem key={template._id} value={template._id}>{template.name}</SelectItem>)}</SelectGroup></SelectContent>
+                </Select>
+              </Field>
+              <div className="rounded-xl border p-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-medium text-slate-950">Inspection assignment</p>
+                    <HelpMark label="When enabled, assigned worker receives email/SMS using selected template." />
+                  </div>
+                  <Switch checked={settingsForm.inspectionEnabled} onCheckedChange={(value) => setSettingsForm((current) => ({ ...current, inspectionEnabled: value }))} />
+                </div>
+                <div className="mt-3 grid gap-3 md:grid-cols-2">
+                  <Field>
+                    <FieldLabel>Inspection template</FieldLabel>
+                    <Select value={settingsForm.inspectionTemplateId || "__default__"} onValueChange={(value) => setSettingsForm((current) => ({ ...current, inspectionTemplateId: value === "__default__" ? "" : (value ?? "") }))}>
+                      <SelectTrigger className="w-full"><SelectValue placeholder="Default inspection message" /></SelectTrigger>
+                      <SelectContent><SelectGroup><SelectItem value="__default__">Default inspection message</SelectItem>{templateList.map((template) => <SelectItem key={template._id} value={template._id}>{template.name}</SelectItem>)}</SelectGroup></SelectContent>
+                    </Select>
+                  </Field>
+                  <div>
+                    <p className="mb-2 text-sm font-medium text-slate-950">Channels</p>
+                    <div className="flex gap-3">
+                      {(["email", "sms"] as const).map((channel) => (
+                        <label key={channel} className="flex items-center gap-2 text-sm">
+                          <Checkbox checked={settingsForm.inspectionChannels.includes(channel)} onCheckedChange={() => setSettingsForm((current) => ({ ...current, inspectionChannels: toggleChannel(current.inspectionChannels, channel) }))} />
+                          {channel.toUpperCase()}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div className="rounded-xl border p-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-medium text-slate-950">Recurring maintenance assignment</p>
+                    <HelpMark label="When enabled, assigned worker receives email/SMS using selected template." />
+                  </div>
+                  <Switch checked={settingsForm.recurringMaintenanceEnabled} onCheckedChange={(value) => setSettingsForm((current) => ({ ...current, recurringMaintenanceEnabled: value }))} />
+                </div>
+                <div className="mt-3 grid gap-3 md:grid-cols-2">
+                  <Field>
+                    <FieldLabel>Recurring template</FieldLabel>
+                    <Select value={settingsForm.recurringMaintenanceTemplateId || "__default__"} onValueChange={(value) => setSettingsForm((current) => ({ ...current, recurringMaintenanceTemplateId: value === "__default__" ? "" : (value ?? "") }))}>
+                      <SelectTrigger className="w-full"><SelectValue placeholder="Default recurring message" /></SelectTrigger>
+                      <SelectContent><SelectGroup><SelectItem value="__default__">Default recurring message</SelectItem>{templateList.map((template) => <SelectItem key={template._id} value={template._id}>{template.name}</SelectItem>)}</SelectGroup></SelectContent>
+                    </Select>
+                  </Field>
+                  <div>
+                    <p className="mb-2 text-sm font-medium text-slate-950">Channels</p>
+                    <div className="flex gap-3">
+                      {(["email", "sms"] as const).map((channel) => (
+                        <label key={channel} className="flex items-center gap-2 text-sm">
+                          <Checkbox checked={settingsForm.recurringMaintenanceChannels.includes(channel)} onCheckedChange={() => setSettingsForm((current) => ({ ...current, recurringMaintenanceChannels: toggleChannel(current.recurringMaintenanceChannels, channel) }))} />
+                          {channel.toUpperCase()}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+              {[
+                ["Overdue rent", "overdueRentChannels"],
+                ["Tenant added", "tenantCreatedChannels", "tenantCreatedTemplateId"],
+                ["Worker added", "workerCreatedChannels", "workerCreatedTemplateId"],
+                ["Notice sent", "noticeCreatedChannels", "noticeCreatedTemplateId"],
+              ].map(([label, key, templateKey]) => {
+                const value = settingsForm[key as keyof typeof settingsForm] as Array<"email" | "sms">
+                return (
+                  <div key={key} className="rounded-xl border p-3">
+                    <p className="mb-2 text-sm font-medium text-slate-950">{label}</p>
+                    <div className="grid gap-3 md:grid-cols-2">
+                      <Field>
+                        <FieldLabel>Template</FieldLabel>
+                        <Select value={(settingsForm[templateKey as keyof typeof settingsForm] as string) || "__default__"} onValueChange={(selected) => setSettingsForm((current) => ({ ...current, [templateKey]: selected === "__default__" ? "" : (selected ?? "") }))}>
+                          <SelectTrigger className="w-full"><SelectValue placeholder="Default template" /></SelectTrigger>
+                          <SelectContent><SelectGroup><SelectItem value="__default__">Default template</SelectItem>{templateList.map((template) => <SelectItem key={template._id} value={template._id}>{template.name}</SelectItem>)}</SelectGroup></SelectContent>
+                        </Select>
+                      </Field>
+                      <div>
+                        <p className="mb-2 text-sm font-medium text-slate-950">Channels</p>
+                        <div className="flex gap-3">
+                          {(["email", "sms"] as const).map((channel) => (
+                            <label key={channel} className="flex items-center gap-2 text-sm">
+                              <Checkbox checked={value.includes(channel)} onCheckedChange={() => setSettingsForm((current) => ({ ...current, [key]: toggleChannel(value, channel) }))} />
+                              {channel.toUpperCase()}
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+              <Button type="submit" disabled={saveSettings.isPending}>Save notification rules</Button>
+            </form>
+          </CardContent>
+        </Card>
+
+        <Card className="shadow-none">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              Template builder
+              <HelpMark label="Variables: {{tenant_full_name}}, {{worker_full_name}}, {{property_name}}, {{unit_number}}, {{bill_amount}}, {{bill_due_date}}, {{work_title}}, {{scheduled_date}}, {{current_date}}." />
+            </CardTitle>
+            <CardDescription>Create reusable email/SMS text.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form
+              className="space-y-3"
+              onSubmit={(event) => {
+                event.preventDefault()
+                createTemplate.mutate(templateForm, {
+                  onSuccess: () => setTemplateForm({ name: "", subject: "", body: "Hi {{tenant_full_name}}, this is a notice from {{property_name}}.", channels: ["email"], purpose: "manual" }),
+                })
+              }}
+            >
+              <Field><FieldLabel>Name</FieldLabel><Input value={templateForm.name} onChange={(event) => setTemplateForm((current) => ({ ...current, name: event.target.value ?? "" }))} /></Field>
+              <Field><FieldLabel>Email subject</FieldLabel><Input value={templateForm.subject} onChange={(event) => setTemplateForm((current) => ({ ...current, subject: event.target.value ?? "" }))} /></Field>
+              <Field><FieldLabel>Message body</FieldLabel><Textarea value={templateForm.body} onChange={(event) => setTemplateForm((current) => ({ ...current, body: event.target.value ?? "" }))} /></Field>
+              <div className="flex gap-3">
+                {(["email", "sms"] as const).map((channel) => (
+                  <label key={channel} className="flex items-center gap-2 text-sm">
+                    <Checkbox checked={templateForm.channels.includes(channel)} onCheckedChange={() => setTemplateForm((current) => ({ ...current, channels: toggleChannel(current.channels, channel) }))} />
+                    {channel.toUpperCase()}
+                  </label>
+                ))}
+              </div>
+              <Button type="submit" disabled={createTemplate.isPending || !templateForm.name || !templateForm.body}>Create template</Button>
+            </form>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card className="shadow-none">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">Send message <HelpMark label="Select template, channels, then choose one tenant or bulk tenants." /></CardTitle>
+          <CardDescription>Bulk or individual send from owner side.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-3 md:grid-cols-3">
+            <Field><FieldLabel>Template</FieldLabel><Select value={sendForm.templateId} onValueChange={(value) => setSendForm((current) => ({ ...current, templateId: value ?? "" }))}><SelectTrigger className="w-full"><SelectValue placeholder="Select template" /></SelectTrigger><SelectContent><SelectGroup>{templateList.map((template) => <SelectItem key={template._id} value={template._id}>{template.name}</SelectItem>)}</SelectGroup></SelectContent></Select></Field>
+            <div className="rounded-xl border p-3">
+              <p className="mb-2 text-sm font-medium text-slate-950">Channels</p>
+              <div className="flex gap-3">
+                {(["email", "sms"] as const).map((channel) => (
+                  <label key={channel} className="flex items-center gap-2 text-sm">
+                    <Checkbox checked={sendForm.channels.includes(channel)} onCheckedChange={() => setSendForm((current) => ({ ...current, channels: toggleChannel(current.channels, channel) }))} />
+                    {channel.toUpperCase()}
+                  </label>
+                ))}
+              </div>
+            </div>
+            <div className="flex items-end gap-2">
+              <Button type="button" variant="outline" onClick={() => setSelectedTenantIds(allSelected ? [] : tenantList.map((tenant) => tenant._id))}>{allSelected ? "Clear all" : "Select all"}</Button>
+              <Button type="button" disabled={sendTemplate.isPending || !sendForm.templateId || !selectedTenantIds.length} onClick={() => sendTemplate.mutate({ templateId: sendForm.templateId, tenantIds: selectedTenantIds, channels: sendForm.channels })}>Send</Button>
+            </div>
+          </div>
+          <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+            {tenantList.map((tenant) => (
+              <label key={tenant._id} className="flex items-center justify-between rounded-xl border p-3 text-sm">
+                <span>
+                  <span className="block font-medium text-slate-950">{tenant.fullName}</span>
+                  <span className="text-slate-500">{tenant.email ?? tenant.phone ?? "No contact"}</span>
+                </span>
+                <Checkbox checked={selectedTenantIds.includes(tenant._id)} onCheckedChange={() => setSelectedTenantIds((current) => current.includes(tenant._id) ? current.filter((id) => id !== tenant._id) : [...current, tenant._id])} />
+              </label>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  )
+}
+
+export function TenantOwnerReportsPage() {
+  const properties = useOwnerPropertiesQuery({ limit: 500 })
+  const tenants = useOwnerTenantsQuery({ limit: 1000 })
+  const tickets = useOwnerTicketsQuery({ limit: 1000 })
+  const bills = useOwnerBillsQuery({ limit: 1000 })
+  const assets = useOwnerAssetsQuery({ limit: 1000 })
+  const financeEntries = useOwnerFinanceEntriesQuery({ limit: 1000 })
+  const propertyList = Array.isArray(properties.data) ? properties.data : []
+  const tenantList = Array.isArray(tenants.data) ? tenants.data : []
+  const ticketList = Array.isArray(tickets.data) ? tickets.data : []
+  const billList = Array.isArray(bills.data) ? bills.data : []
+  const assetList = Array.isArray(assets.data) ? assets.data : []
+  const financeList = Array.isArray(financeEntries.data) ? financeEntries.data : []
+  const loading = properties.isLoading || tenants.isLoading || tickets.isLoading || bills.isLoading || assets.isLoading || financeEntries.isLoading
+  const [reportType, setReportType] = useState("rent-roll")
+  const [periodMode, setPeriodMode] = useState("month")
+  const [monthKey, setMonthKey] = useState(new Date().toISOString().slice(0, 7))
+  const [fromDate, setFromDate] = useState(new Date().toISOString().slice(0, 10))
+  const [toDate, setToDate] = useState(new Date().toISOString().slice(0, 10))
+  const [dayDate, setDayDate] = useState(new Date().toISOString().slice(0, 10))
+  const [page, setPage] = useState(1)
+  const pageSize = 10
+
+  const reportRowsByType = useMemo<Record<string, ReportRow[]>>(() => ({
+    "rent-roll": tenantList.map((tenant) => ({
+      tenant: tenant.fullName,
+      property: propertyList.find((property) => property._id === tenant.propertyId)?.name ?? "",
+      rent: tenant.monthlyRent ?? 0,
+      dueDay: tenant.rentDueDay ?? "",
+      leaseStart: tenant.leaseStart ?? "",
+      leaseEnd: tenant.leaseEnd ?? "",
+      active: String(tenant.isActive ?? true),
+      reportDate: tenant.leaseStart ?? tenant.createdAt ?? "",
+    })),
+    bills: billList.map((bill) => ({
+      title: bill.title,
+      tenant: tenantList.find((tenant) => tenant._id === bill.tenantId)?.fullName ?? "",
+      property: propertyList.find((property) => property._id === bill.propertyId)?.name ?? "",
+      kind: bill.kind,
+      status: bill.status,
+      amount: bill.amount,
+      dueDate: bill.dueDate ?? "",
+      monthKey: bill.monthKey ?? "",
+      reportDate: bill.dueDate ?? bill.createdAt ?? "",
+    })),
+    tickets: ticketList.map((ticket) => ({
+      title: ticket.title,
+      property: propertyList.find((property) => property._id === ticket.propertyId)?.name ?? "",
+      status: ticket.status,
+      priority: ticket.priority,
+      category: ticket.category ?? "",
+      dueDate: ticket.dueDate ?? "",
+      estimatedCost: ticket.estimatedCost ?? 0,
+      actualCost: ticket.actualCost ?? 0,
+      reportDate: ticket.dueDate ?? ticket.createdAt ?? "",
+    })),
+    assets: assetList.map((asset) => ({
+      name: asset.name,
+      property: propertyList.find((property) => property._id === asset.propertyId)?.name ?? "",
+      category: asset.category,
+      serial: asset.serialNumber ?? "",
+      model: asset.model ?? "",
+      warrantyEnd: asset.warrantyEnd ?? "",
+      nextServiceAt: asset.nextServiceAt ?? "",
+      status: asset.status,
+      reportDate: asset.nextServiceAt ?? asset.warrantyEnd ?? asset.createdAt ?? "",
+    })),
+    finance: financeList.map((entry) => ({
+      title: entry.title,
+      kind: entry.kind,
+      category: entry.category,
+      amount: entry.amount,
+      currency: entry.currency ?? "",
+      status: entry.status,
+      occurredAt: entry.occurredAt,
+      reportDate: entry.occurredAt,
+    })),
+  }), [assetList, billList, financeList, propertyList, tenantList, ticketList])
+
+  const reportMeta = [
+    {
+      value: "rent-roll",
+      title: "Rent roll",
+      help: "Exports tenant, property, rent, due day, lease dates, and active state.",
+    },
+    {
+      value: "bills",
+      title: "Bills",
+      help: "Exports bill status, amount, due date, kind, tenant, and property.",
+    },
+    {
+      value: "tickets",
+      title: "Tickets",
+      help: "Exports ticket status, priority, category, property, due date, and cost.",
+    },
+    {
+      value: "assets",
+      title: "Assets",
+      help: "Exports asset category, serial, model, warranty, service date, and status.",
+    },
+    {
+      value: "finance",
+      title: "Finance",
+      help: "Exports manual income and expense ledger rows.",
+    },
+  ]
+  const selectedReport = reportMeta.find((item) => item.value === reportType) ?? reportMeta[0]
+  const reportRows = reportRowsByType[reportType as keyof typeof reportRowsByType] ?? []
+  const filterRowsByPeriod = (rows: ReportRow[]) => rows.filter((row) => {
+    if (periodMode === "all") return true
+    if (periodMode === "month") return String(row.reportDate ?? "").slice(0, 7) === monthKey
+    if (periodMode === "day") return isDateInRange(row.reportDate, dayDate, dayDate)
+    return isDateInRange(row.reportDate, fromDate, toDate)
+  })
+  const filteredReportRows = filterRowsByPeriod(reportRows)
+  const pagedReportRows = paginateItems(filteredReportRows, page, pageSize)
+  const reportHeaders = Object.keys(filteredReportRows[0] ?? reportRows[0] ?? { reportDate: "" })
+  const downloadReport = (type: string) => {
+    const rows = filterRowsByPeriod(reportRowsByType[type] ?? [])
+    if (!rows.length) return
+    downloadCsv(`${type}-${periodMode}.csv`, rows)
+  }
+
+  useEffect(() => {
+    setPage(1)
+  }, [reportType, periodMode, monthKey, fromDate, toDate, dayDate])
+
+  return (
+    <div className="space-y-6">
+      <OwnerPageHero
+        icon={FileChartColumn}
+        badge="Reports"
+        title="Reports export"
+        body="Download owner-ready CSV files for rent roll, bills, tickets, assets, and finance ledgers."
+      />
+      <WithBone name="owner-page-reports" loading={loading} fallback={<DashboardPanelSkeleton />}>
+        <Card className="shadow-none">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              {selectedReport.title} report
+              <HelpMark label={selectedReport.help} />
+            </CardTitle>
+            <CardDescription>{filteredReportRows.length} rows ready for current period.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid gap-3 xl:grid-cols-5">
+              <Field>
+                <FieldLabel>Report</FieldLabel>
+                <Select value={reportType} onValueChange={(value) => setReportType(value ?? "rent-roll")}>
+                  <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                  <SelectContent><SelectGroup>{reportMeta.map((item) => <SelectItem key={item.value} value={item.value}>{item.title}</SelectItem>)}</SelectGroup></SelectContent>
+                </Select>
+              </Field>
+              <Field>
+                <FieldLabel>Period</FieldLabel>
+                <Select value={periodMode} onValueChange={(value) => setPeriodMode(value ?? "month")}>
+                  <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectGroup>
+                      <SelectItem value="month">Month</SelectItem>
+                      <SelectItem value="range">Date range</SelectItem>
+                      <SelectItem value="day">Selected day</SelectItem>
+                      <SelectItem value="all">All dates</SelectItem>
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+              </Field>
+              {periodMode === "month" ? <DatePickerButton label="Month" value={monthKey} monthOnly onChange={setMonthKey} /> : null}
+              {periodMode === "range" ? <>
+                <DatePickerButton label="From" value={fromDate} onChange={setFromDate} />
+                <DatePickerButton label="To" value={toDate} onChange={setToDate} />
+              </> : null}
+              {periodMode === "day" ? <DatePickerButton label="Day" value={dayDate} onChange={setDayDate} /> : null}
+              <div className="flex items-end">
+                <Button type="button" variant="outline" className="w-full gap-2 shadow-none" disabled={!filteredReportRows.length} onClick={() => downloadCsv(`${reportType}-${periodMode}.csv`, filteredReportRows)}>
+                  <Download className="h-4 w-4" />
+                  Download CSV
+                </Button>
+              </div>
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+              {reportMeta.map((report) => {
+                const rows = filterRowsByPeriod(reportRowsByType[report.value] ?? [])
+                return (
+                  <Button key={report.value} type="button" variant="outline" className="justify-start gap-2 shadow-none" disabled={!rows.length} onClick={() => downloadReport(report.value)}>
+                    <Download className="h-4 w-4" />
+                    {report.title} ({rows.length})
+                  </Button>
+                )
+              })}
+            </div>
+
+            <div className="overflow-hidden rounded-2xl border">
+              <Table>
+                <TableHeader className="bg-slate-50">
+                  <TableRow>{reportHeaders.map((header) => <TableHead key={header}>{header}</TableHead>)}</TableRow>
+                </TableHeader>
+                <TableBody>
+                  {pagedReportRows.length ? pagedReportRows.map((row, index) => (
+                    <TableRow key={`${reportType}-${page}-${index}`}>
+                      {reportHeaders.map((header) => <TableCell key={header} className="min-w-32">{String(row[header] ?? "")}</TableCell>)}
+                    </TableRow>
+                  )) : (
+                    <TableRow>
+                      <TableCell colSpan={Math.max(1, reportHeaders.length)}>
+                        <Empty>
+                          <EmptyHeader>
+                            <EmptyMedia variant="icon"><FileChartColumn /></EmptyMedia>
+                            <EmptyTitle>No report rows</EmptyTitle>
+                            <EmptyDescription>Change report type or period.</EmptyDescription>
+                          </EmptyHeader>
+                        </Empty>
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+            <PaginationControls page={page} total={filteredReportRows.length} pageSize={pageSize} onPageChange={setPage} />
+          </CardContent>
+        </Card>
+      </WithBone>
+    </div>
+  )
+}
+
 export function TenantOwnerTicketsPage() {
   const properties = useOwnerPropertiesQuery()
   const units = useOwnerUnitsQuery()
@@ -3568,6 +5268,7 @@ export function TenantOwnerTicketsPage() {
                             <div className="mt-2 flex flex-wrap gap-2">
                               <Badge variant="outline">{ticket.category}</Badge>
                               <Badge variant="secondary">{ticket.priority}</Badge>
+                              <ApprovalBadge status={ticket.approvalStatus} />
                             </div>
                           </div>
                         </TableCell>
@@ -3659,6 +5360,12 @@ export function TenantOwnerTicketsPage() {
                   </div>
                 </div>
                 <AuditStamp item={selectedTicket} />
+                <ApprovalControls
+                  status={selectedTicket.approvalStatus}
+                  disabled={updateTicket.isPending}
+                  onApprove={() => updateTicket.mutate({ id: selectedTicket._id, payload: { approvalStatus: "approved", approvalNote: "Owner approved ticket completion" } })}
+                  onReject={() => updateTicket.mutate({ id: selectedTicket._id, payload: { approvalStatus: "rejected", status: "in_progress", approvalNote: "Owner requested ticket rework" } })}
+                />
               </>
             ) : null}
 
@@ -3810,6 +5517,7 @@ export function TenantOwnerWorkOrdersPage() {
   const users = useOwnerUsersQuery()
   const workOrders = useOwnerWorkOrdersQuery()
   const createWorkOrder = useOwnerCreateWorkOrderMutation()
+  const updateWorkOrder = useOwnerUpdateWorkOrderMutation()
   const [isCreateOpen, setIsCreateOpen] = useState(false)
   const [proofUrls, setProofUrls] = useState<string[]>([])
   const propertyList = Array.isArray(properties.data) ? properties.data : []
@@ -3894,7 +5602,7 @@ export function TenantOwnerWorkOrdersPage() {
         </CreateSheet>
       </div>
       <WithBone name="owner-page-work-orders" loading={workOrders.isLoading} fallback={<DashboardTableSkeleton />}>
-        <Card className="shadow-none"><CardHeader><CardTitle>Work orders</CardTitle><CardDescription>Open, scheduled, and cost-tracked work.</CardDescription></CardHeader><CardContent className="space-y-3">{workOrderList.length ? workOrderList.map((item) => <div key={item._id} className="rounded-xl border p-4"><div className="flex flex-wrap gap-2"><p className="font-medium text-slate-950">{item.title}</p><Badge variant="outline">{item.status}</Badge></div><p className="mt-2 text-sm text-slate-600">{item.description}</p><div className="mt-3 grid gap-3 rounded-xl bg-slate-50 p-3 text-sm sm:grid-cols-3"><div><p className="text-xs uppercase tracking-wide text-slate-500">Estimated</p><p className="font-medium text-slate-950">{formatMoney(item.estimatedCost ?? 0, (item.currency ?? "usd").toUpperCase())}</p></div><div><p className="text-xs uppercase tracking-wide text-slate-500">Actual</p><p className="font-medium text-slate-950">{formatMoney(item.actualCost ?? 0, (item.currency ?? "usd").toUpperCase())}</p></div><div><p className="text-xs uppercase tracking-wide text-slate-500">Due</p><p className="font-medium text-slate-950">{item.dueDate ? new Date(item.dueDate).toLocaleDateString() : "No due date"}</p></div></div></div>) : <Empty><EmptyHeader><EmptyMedia variant="icon"><ClipboardCheck /></EmptyMedia><EmptyTitle>No work orders yet</EmptyTitle><EmptyDescription>Create first work order from top sheet.</EmptyDescription></EmptyHeader></Empty>}</CardContent></Card>
+        <Card className="shadow-none"><CardHeader><CardTitle>Work orders</CardTitle><CardDescription>Worker proof and cost need owner approval before completion/payment.</CardDescription></CardHeader><CardContent className="space-y-3">{workOrderList.length ? workOrderList.map((item) => <div key={item._id} className="rounded-xl border p-4"><div className="flex flex-wrap gap-2"><p className="font-medium text-slate-950">{item.title}</p><Badge variant="outline">{item.status}</Badge><ApprovalBadge status={item.approvalStatus} /></div><p className="mt-2 text-sm text-slate-600">{item.description}</p><div className="mt-3 grid gap-3 rounded-xl bg-slate-50 p-3 text-sm sm:grid-cols-4"><div><p className="text-xs uppercase tracking-wide text-slate-500">Estimated</p><p className="font-medium text-slate-950">{formatMoney(item.estimatedCost ?? 0, (item.currency ?? "usd").toUpperCase())}</p></div><div><p className="text-xs uppercase tracking-wide text-slate-500">Actual</p><p className="font-medium text-slate-950">{formatMoney(item.actualCost ?? 0, (item.currency ?? "usd").toUpperCase())}</p></div><div><p className="text-xs uppercase tracking-wide text-slate-500">Due</p><p className="font-medium text-slate-950">{item.dueDate ? new Date(item.dueDate).toLocaleDateString() : "No due date"}</p></div><div><p className="text-xs uppercase tracking-wide text-slate-500">Proof files</p><p className="font-medium text-slate-950">{item.completionProof?.length ?? 0}</p></div></div><ApprovalControls status={item.approvalStatus} disabled={updateWorkOrder.isPending} onApprove={() => updateWorkOrder.mutate({ id: item._id, payload: { approvalStatus: "approved", approvalNote: "Owner approved completion" } })} onReject={() => updateWorkOrder.mutate({ id: item._id, payload: { approvalStatus: "rejected", status: "in_progress", approvalNote: "Owner requested rework" } })} /></div>) : <Empty><EmptyHeader><EmptyMedia variant="icon"><ClipboardCheck /></EmptyMedia><EmptyTitle>No work orders yet</EmptyTitle><EmptyDescription>Create first work order from top sheet.</EmptyDescription></EmptyHeader></Empty>}</CardContent></Card>
       </WithBone>
     </div>
   )
@@ -3946,7 +5654,7 @@ export function TenantOwnerRecurringPage() {
           <Card className="shadow-none"><CardHeader><CardTitle>Recurring plans</CardTitle><CardDescription>Assigned worker and latest run report show here.</CardDescription></CardHeader><CardContent className="space-y-3">{recurringList.length ? recurringList.map((item) => {
             const assignedWorker = workerList.find((user) => user.id === item.assignedTo)
             const latestRun = [...(item.runHistory ?? [])].sort((left, right) => new Date(right.reportedAt ?? "").getTime() - new Date(left.reportedAt ?? "").getTime())[0]
-            return <div key={item._id} className="rounded-xl border p-4"><div className="flex flex-wrap gap-2"><p className="font-medium text-slate-950">{item.title}</p><Badge variant="outline">{item.frequency}</Badge><Badge variant={item.assignedTo ? "default" : "secondary"}>{assignedWorker?.fullName ?? "Unassigned"}</Badge><Badge variant={item.paymentStatus === "paid" ? "default" : "secondary"}>{item.paymentStatus ?? "unpaid"}</Badge></div><p className="mt-2 text-sm text-slate-600">{item.description ?? "No description"}</p><div className="mt-3 grid gap-3 rounded-xl bg-slate-50 p-3 text-sm sm:grid-cols-5"><div><p className="text-xs uppercase tracking-wide text-slate-500">Next run</p><p className="font-medium text-slate-950">{item.nextRunAt ? new Date(item.nextRunAt).toLocaleDateString() : "No date"}</p></div><div><p className="text-xs uppercase tracking-wide text-slate-500">Latest status</p><p className="font-medium text-slate-950">{latestRun?.status ?? "No report"}</p></div><div><p className="text-xs uppercase tracking-wide text-slate-500">Reported at</p><p className="font-medium text-slate-950">{latestRun?.reportedAt ? new Date(latestRun.reportedAt).toLocaleDateString() : "No report yet"}</p></div><div><p className="text-xs uppercase tracking-wide text-slate-500">Estimated</p><p className="font-medium text-slate-950">{formatMoney(item.estimatedCost ?? 0, (item.currency ?? "usd").toUpperCase())}</p></div><div><p className="text-xs uppercase tracking-wide text-slate-500">Actual</p><p className="font-medium text-slate-950">{formatMoney(item.actualCost ?? 0, (item.currency ?? "usd").toUpperCase())}</p></div></div><div className="mt-3 rounded-xl border bg-white p-3"><p className="text-xs uppercase tracking-wide text-slate-500">Latest worker note</p><p className="mt-1 text-sm text-slate-700">{latestRun?.note ?? "Worker has not submitted report yet."}</p></div><div className="mt-3"><AuditStamp item={item} /></div>{latestRun?.status === "completed" ? <div className="mt-3 flex flex-wrap gap-2"><Button type="button" size="sm" variant={item.paymentStatus === "paid" ? "default" : "outline"} onClick={() => updateRecurring.mutate({ id: item._id, payload: { paymentStatus: "paid" } })}>Paid</Button><Button type="button" size="sm" variant={item.paymentStatus === "unpaid" ? "default" : "outline"} onClick={() => updateRecurring.mutate({ id: item._id, payload: { paymentStatus: "unpaid" } })}>Unpaid</Button></div> : null}</div>
+            return <div key={item._id} className="rounded-xl border p-4"><div className="flex flex-wrap gap-2"><p className="font-medium text-slate-950">{item.title}</p><Badge variant="outline">{item.frequency}</Badge><Badge variant={item.assignedTo ? "default" : "secondary"}>{assignedWorker?.fullName ?? "Unassigned"}</Badge><Badge variant={item.paymentStatus === "paid" ? "default" : "secondary"}>{item.paymentStatus ?? "unpaid"}</Badge><ApprovalBadge status={item.approvalStatus} /></div><p className="mt-2 text-sm text-slate-600">{item.description ?? "No description"}</p><div className="mt-3 grid gap-3 rounded-xl bg-slate-50 p-3 text-sm sm:grid-cols-5"><div><p className="text-xs uppercase tracking-wide text-slate-500">Next run</p><p className="font-medium text-slate-950">{item.nextRunAt ? new Date(item.nextRunAt).toLocaleDateString() : "No date"}</p></div><div><p className="text-xs uppercase tracking-wide text-slate-500">Latest status</p><p className="font-medium text-slate-950">{latestRun?.status ?? "No report"}</p></div><div><p className="text-xs uppercase tracking-wide text-slate-500">Reported at</p><p className="font-medium text-slate-950">{latestRun?.reportedAt ? new Date(latestRun.reportedAt).toLocaleDateString() : "No report yet"}</p></div><div><p className="text-xs uppercase tracking-wide text-slate-500">Estimated</p><p className="font-medium text-slate-950">{formatMoney(item.estimatedCost ?? 0, (item.currency ?? "usd").toUpperCase())}</p></div><div><p className="text-xs uppercase tracking-wide text-slate-500">Actual</p><p className="font-medium text-slate-950">{formatMoney(item.actualCost ?? 0, (item.currency ?? "usd").toUpperCase())}</p></div></div><div className="mt-3 rounded-xl border bg-white p-3"><p className="text-xs uppercase tracking-wide text-slate-500">Latest worker note</p><p className="mt-1 text-sm text-slate-700">{latestRun?.note ?? "Worker has not submitted report yet."}</p></div><div className="mt-3"><AuditStamp item={item} /></div>{latestRun?.status === "completed" ? <ApprovalControls status={item.approvalStatus} disabled={updateRecurring.isPending} onApprove={() => updateRecurring.mutate({ id: item._id, payload: { approvalStatus: "approved", approvalNote: "Owner approved recurring run" } })} onReject={() => updateRecurring.mutate({ id: item._id, payload: { approvalStatus: "rejected", approvalNote: "Owner requested rework" } })} onPaid={() => updateRecurring.mutate({ id: item._id, payload: { paymentStatus: "paid" } })} onUnpaid={() => updateRecurring.mutate({ id: item._id, payload: { paymentStatus: "unpaid" } })} /> : null}</div>
           }) : <Empty><EmptyHeader><EmptyMedia variant="icon"><Repeat /></EmptyMedia><EmptyTitle>No recurring maintenance yet</EmptyTitle><EmptyDescription>Create first recurring maintenance from top sheet.</EmptyDescription></EmptyHeader></Empty>}</CardContent></Card>
         </WithBone>
       </div>
@@ -4016,7 +5724,7 @@ export function TenantOwnerInspectionsPage() {
         <WithBone name="owner-page-inspections" loading={inspections.isLoading} fallback={<DashboardTableSkeleton />}>
           <Card className="shadow-none"><CardHeader><CardTitle>Inspections</CardTitle><CardDescription>Assigned worker, worker report, and cost tracking now visible here.</CardDescription></CardHeader><CardContent className="space-y-3">{inspectionList.length ? inspectionList.map((item) => {
             const assignedWorker = workerList.find((user) => user.id === item.assignedTo)
-            return <div key={item._id} className="rounded-xl border p-4"><div className="flex flex-wrap gap-2"><p className="font-medium text-slate-950">{item.type}</p><Badge variant={item.completed ? "default" : "outline"}>{item.completed ? "Done" : "Pending"}</Badge><Badge variant={item.assignedTo ? "default" : "secondary"}>{assignedWorker?.fullName ?? "Unassigned"}</Badge><Badge variant={item.paymentStatus === "paid" ? "default" : "secondary"}>{item.paymentStatus ?? "unpaid"}</Badge></div><p className="mt-2 text-sm text-slate-600">{item.scheduledAt ? new Date(item.scheduledAt).toLocaleDateString() : "No date"}</p><div className="mt-3 grid gap-3 rounded-xl bg-slate-50 p-3 text-sm sm:grid-cols-4"><div><p className="text-xs uppercase tracking-wide text-slate-500">Worker report</p><p className="font-medium text-slate-950">{item.workerReport ?? "No report yet"}</p></div><div><p className="text-xs uppercase tracking-wide text-slate-500">Reported at</p><p className="font-medium text-slate-950">{item.workerReportedAt ? new Date(item.workerReportedAt).toLocaleDateString() : "Not submitted"}</p></div><div><p className="text-xs uppercase tracking-wide text-slate-500">Estimated</p><p className="font-medium text-slate-950">{formatMoney(item.estimatedCost ?? 0, (item.currency ?? "usd").toUpperCase())}</p></div><div><p className="text-xs uppercase tracking-wide text-slate-500">Actual</p><p className="font-medium text-slate-950">{formatMoney(item.actualCost ?? 0, (item.currency ?? "usd").toUpperCase())}</p></div></div><div className="mt-3 rounded-xl border bg-white p-3"><p className="text-xs uppercase tracking-wide text-slate-500">Damage report</p><p className="mt-1 text-sm text-slate-700">{item.damageReport ?? "No damage report"}</p></div><div className="mt-3"><AuditStamp item={item} /></div>{item.completed ? <div className="mt-3 flex flex-wrap gap-2"><Button type="button" size="sm" variant={item.paymentStatus === "paid" ? "default" : "outline"} onClick={() => updateInspection.mutate({ id: item._id, payload: { paymentStatus: "paid" } })}>Paid</Button><Button type="button" size="sm" variant={item.paymentStatus === "unpaid" ? "default" : "outline"} onClick={() => updateInspection.mutate({ id: item._id, payload: { paymentStatus: "unpaid" } })}>Unpaid</Button></div> : null}</div>
+            return <div key={item._id} className="rounded-xl border p-4"><div className="flex flex-wrap gap-2"><p className="font-medium text-slate-950">{item.type}</p><Badge variant={item.completed ? "default" : "outline"}>{item.completed ? "Done" : "Pending"}</Badge><Badge variant={item.assignedTo ? "default" : "secondary"}>{assignedWorker?.fullName ?? "Unassigned"}</Badge><Badge variant={item.paymentStatus === "paid" ? "default" : "secondary"}>{item.paymentStatus ?? "unpaid"}</Badge><ApprovalBadge status={item.approvalStatus} /></div><p className="mt-2 text-sm text-slate-600">{item.scheduledAt ? new Date(item.scheduledAt).toLocaleDateString() : "No date"}</p><div className="mt-3 grid gap-3 rounded-xl bg-slate-50 p-3 text-sm sm:grid-cols-4"><div><p className="text-xs uppercase tracking-wide text-slate-500">Worker report</p><p className="font-medium text-slate-950">{item.workerReport ?? "No report yet"}</p></div><div><p className="text-xs uppercase tracking-wide text-slate-500">Reported at</p><p className="font-medium text-slate-950">{item.workerReportedAt ? new Date(item.workerReportedAt).toLocaleDateString() : "Not submitted"}</p></div><div><p className="text-xs uppercase tracking-wide text-slate-500">Estimated</p><p className="font-medium text-slate-950">{formatMoney(item.estimatedCost ?? 0, (item.currency ?? "usd").toUpperCase())}</p></div><div><p className="text-xs uppercase tracking-wide text-slate-500">Actual</p><p className="font-medium text-slate-950">{formatMoney(item.actualCost ?? 0, (item.currency ?? "usd").toUpperCase())}</p></div></div><div className="mt-3 rounded-xl border bg-white p-3"><p className="text-xs uppercase tracking-wide text-slate-500">Damage report</p><p className="mt-1 text-sm text-slate-700">{item.damageReport ?? "No damage report"}</p></div><div className="mt-3"><AuditStamp item={item} /></div>{item.workerReportedAt ? <ApprovalControls status={item.approvalStatus} disabled={updateInspection.isPending} onApprove={() => updateInspection.mutate({ id: item._id, payload: { approvalStatus: "approved", approvalNote: "Owner approved inspection", paymentStatus: item.paymentStatus ?? "unpaid" } })} onReject={() => updateInspection.mutate({ id: item._id, payload: { approvalStatus: "rejected", approvalNote: "Owner requested inspection rework", completed: false } })} onPaid={() => updateInspection.mutate({ id: item._id, payload: { paymentStatus: "paid" } })} onUnpaid={() => updateInspection.mutate({ id: item._id, payload: { paymentStatus: "unpaid" } })} /> : null}</div>
           }) : <Empty><EmptyHeader><EmptyMedia variant="icon"><ClipboardCheck /></EmptyMedia><EmptyTitle>No inspections yet</EmptyTitle><EmptyDescription>Create first inspection from top sheet.</EmptyDescription></EmptyHeader></Empty>}</CardContent></Card>
         </WithBone>
       </div>

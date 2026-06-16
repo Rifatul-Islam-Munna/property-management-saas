@@ -9,6 +9,7 @@ import { SuccessResponseDto } from 'src/lib/success-response.dto';
 import { UserRole } from 'src/user/entities/user.entity';
 import { BillService } from './bill.service';
 import { CreateBillDto } from './dto/create-bill.dto';
+import { GenerateMonthlyBillsDto } from './dto/generate-monthly-bills.dto';
 import { QueryBillDto } from './dto/query-bill.dto';
 import { UpdateBillDto } from './dto/update-bill.dto';
 
@@ -38,6 +39,20 @@ export class BillController {
   async findMy(@Req() req: ExpressRequest): Promise<SuccessResponseDto> {
     const data = await this.billService.findMyBills(req.user.organizationId ?? '', req.user);
     return new SuccessResponseDto(200, 'Resident bill list fetched', data);
+  }
+
+  @Post('monthly-rent')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.TETENTWONER)
+  async generateMonthlyRentBills(
+    @Req() req: ExpressRequest,
+    @Body() dto: GenerateMonthlyBillsDto,
+  ): Promise<SuccessResponseDto> {
+    const data = await this.billService.generateMonthlyRentBills(
+      req.user.organizationId ?? '',
+      req.user,
+      dto,
+    );
+    return new SuccessResponseDto(201, 'Monthly rent bills generated', data);
   }
 
   @Post('my/monthly-checkout')

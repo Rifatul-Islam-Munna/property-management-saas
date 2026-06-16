@@ -17,6 +17,13 @@ export enum RecurringReportStatus {
   SKIPPED = 'skipped',
 }
 
+export enum ApprovalStatus {
+  NOT_SUBMITTED = 'not_submitted',
+  PENDING = 'pending',
+  APPROVED = 'approved',
+  REJECTED = 'rejected',
+}
+
 @Schema({ _id: false })
 export class RecurringRunReport {
   @Prop({ type: String, enum: RecurringReportStatus, default: RecurringReportStatus.COMPLETED })
@@ -96,6 +103,21 @@ export class RecurringMaintenance {
 
   @Prop({ type: Boolean, default: true })
   isActive: boolean;
+
+  @Prop({ type: String, enum: ApprovalStatus, default: ApprovalStatus.NOT_SUBMITTED, index: true })
+  approvalStatus: ApprovalStatus;
+
+  @Prop({ type: Date, default: null })
+  approvalRequestedAt?: Date | null;
+
+  @Prop({ type: String, default: null })
+  approvalNote?: string | null;
+
+  @Prop({ type: String, default: null })
+  approvedBy?: string | null;
+
+  @Prop({ type: Date, default: null })
+  approvedAt?: Date | null;
 
   @Prop({ type: String, required: true })
   createdBy: string;

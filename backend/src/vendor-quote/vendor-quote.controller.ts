@@ -1,0 +1,53 @@
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { AuthGuard } from 'src/lib/auth.guard';
+import type { ExpressRequest } from 'src/lib/auth.guard';
+import { MongoIdPipe } from 'src/lib/mongo-id.pipe';
+import { Roles } from 'src/lib/roles.decorator';
+import { RolesGuard } from 'src/lib/roles.guard';
+import { SuccessResponseDto } from 'src/lib/success-response.dto';
+import { UserRole } from 'src/user/entities/user.entity';
+import { CreateVendorQuoteDto } from './dto/create-vendor-quote.dto';
+import { QueryVendorQuoteDto } from './dto/query-vendor-quote.dto';
+import { UpdateVendorQuoteDto } from './dto/update-vendor-quote.dto';
+import { VendorQuoteService } from './vendor-quote.service';
+
+@ApiTags('vendor-quote')
+@ApiBearerAuth()
+@UseGuards(AuthGuard, RolesGuard)
+@Controller('vendor-quote')
+export class VendorQuoteController {
+  constructor(private readonly vendorQuoteService: VendorQuoteService) {}
+
+  @Post()
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.TETENTWONER)
+  async create(@Req() req: ExpressRequest, @Body() dto: CreateVendorQuoteDto): Promise<SuccessResponseDto> {
+    const data = await this.vendorQuoteService.create(req.user.organizationId ?? '', req.user, dto);
+    return new SuccessResponseDto(201, 'Vendor quote created successfully', data);
+  }
+
+  @Get()
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.TETENTWONER)
+  async findAll(@Req() req: ExpressRequest, @Query() query: QueryVendorQuoteDto): Promise<SuccessResponseDto> {
+    const data = await this.vendorQuoteService.findAll(req.user.organizationId ?? '', query);
+    return new SuccessResponseDto(200, 'Vendor quote list fetched', data);
+  }
+
+  @Patch(':id')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.TETENTWONER)
+  async update(
+    @Req() req: ExpressRequest,
+    @Param('id', MongoIdPipe) id: string,
+    @Body() dto: UpdateVendorQuoteDto,
+  ): Promise<SuccessResponseDto> {
+    const data = await this.vendorQuoteService.update(req.user.organizationId ?? '', req.user, id, dto);
+    return new SuccessResponseDto(200, 'Vendor quote updated successfully', data);
+  }
+
+  @Delete(':id')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.TETENTWONER)
+  async remove(@Req() req: ExpressRequest, @Param('id', MongoIdPipe) id: string): Promise<SuccessResponseDto> {
+    const data = await this.vendorQuoteService.remove(req.user.organizationId ?? '', id);
+    return new SuccessResponseDto(200, 'Vendor quote deleted successfully', data);
+  }
+}

@@ -8,6 +8,13 @@ export enum InspectionType {
   ROUTINE = 'routine',
 }
 
+export enum ApprovalStatus {
+  NOT_SUBMITTED = 'not_submitted',
+  PENDING = 'pending',
+  APPROVED = 'approved',
+  REJECTED = 'rejected',
+}
+
 export type InspectionDocument = HydratedDocument<Inspection>;
 
 @Schema({ timestamps: true })
@@ -71,6 +78,21 @@ export class Inspection {
 
   @Prop({ type: Boolean, default: false })
   completed: boolean;
+
+  @Prop({ type: String, enum: ApprovalStatus, default: ApprovalStatus.NOT_SUBMITTED, index: true })
+  approvalStatus: ApprovalStatus;
+
+  @Prop({ type: Date, default: null })
+  approvalRequestedAt?: Date | null;
+
+  @Prop({ type: String, default: null })
+  approvalNote?: string | null;
+
+  @Prop({ type: String, default: null })
+  approvedBy?: string | null;
+
+  @Prop({ type: Date, default: null })
+  approvedAt?: Date | null;
 
   @Prop({ type: Date, default: null })
   completedAt?: Date | null;

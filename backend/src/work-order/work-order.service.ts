@@ -6,7 +6,7 @@ import { UserRole } from 'src/user/entities/user.entity';
 import { CreateWorkOrderDto } from './dto/create-work-order.dto';
 import { QueryWorkOrderDto } from './dto/query-work-order.dto';
 import { UpdateWorkOrderDto } from './dto/update-work-order.dto';
-import { WorkOrder, WorkOrderDocument, WorkOrderStatus } from './entities/work-order.entity';
+import { WorkApprovalStatus, WorkOrder, WorkOrderDocument, WorkOrderStatus } from './entities/work-order.entity';
 
 @Injectable()
 export class WorkOrderService {
@@ -76,10 +76,26 @@ export class WorkOrderService {
       actor.role === UserRole.WORKER
         ? {
             status: dto.status,
+            actualCost: dto.actualCost,
             completionNotes: dto.completionNotes,
             completionProof: dto.completionProof,
+            approvalStatus:
+              dto.status === WorkOrderStatus.COMPLETED || dto.actualCost !== undefined || dto.completionProof?.length
+                ? WorkApprovalStatus.PENDING
+                : undefined,
+            approvalRequestedAt:
+              dto.status === WorkOrderStatus.COMPLETED || dto.actualCost !== undefined || dto.completionProof?.length
+                ? new Date()
+                : undefined,
           }
-        : dto;
+        : {
+            ...dto,
+            approvedBy: dto.approvalStatus === WorkApprovalStatus.APPROVED ? actor.id : undefined,
+            approvedAt: dto.approvalStatus === WorkApprovalStatus.APPROVED ? new Date() : undefined,
+            verifiedBy: dto.approvalStatus === WorkApprovalStatus.APPROVED ? actor.id : undefined,
+            verifiedAt: dto.approvalStatus === WorkApprovalStatus.APPROVED ? new Date() : undefined,
+            status: dto.approvalStatus === WorkApprovalStatus.APPROVED ? WorkOrderStatus.COMPLETED : dto.status,
+          };
 
     const workOrder = await this.workOrderModel.findOneAndUpdate(
       filter,
@@ -99,6 +115,9 @@ export class WorkOrderService {
     const workOrder = await this.workOrderModel.findOne({ _id: id, organizationId });
     if (!workOrder) throw new NotFoundException('Work order not found');
     workOrder.status = WorkOrderStatus.COMPLETED;
+    workOrder.approvalStatus = WorkApprovalStatus.APPROVED;
+    workOrder.approvedBy = actor.id;
+    workOrder.approvedAt = new Date();
     workOrder.verifiedBy = actor.id;
     workOrder.verifiedAt = new Date();
     workOrder.updatedByUserId = actor.id;

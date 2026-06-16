@@ -11,6 +11,13 @@ export enum WorkOrderStatus {
   CANCELLED = 'cancelled',
 }
 
+export enum WorkApprovalStatus {
+  NOT_SUBMITTED = 'not_submitted',
+  PENDING = 'pending',
+  APPROVED = 'approved',
+  REJECTED = 'rejected',
+}
+
 export type WorkOrderDocument = HydratedDocument<WorkOrder>;
 
 @Schema({ timestamps: true })
@@ -62,6 +69,21 @@ export class WorkOrder {
 
   @Prop({ type: [String], default: [] })
   completionProof: string[];
+
+  @Prop({ type: String, enum: WorkApprovalStatus, default: WorkApprovalStatus.NOT_SUBMITTED, index: true })
+  approvalStatus: WorkApprovalStatus;
+
+  @Prop({ type: Date, default: null })
+  approvalRequestedAt?: Date | null;
+
+  @Prop({ type: String, default: null })
+  approvalNote?: string | null;
+
+  @Prop({ type: String, default: null })
+  approvedBy?: string | null;
+
+  @Prop({ type: Date, default: null })
+  approvedAt?: Date | null;
 
   @Prop({ type: String, default: null })
   verifiedBy?: string | null;

@@ -10,9 +10,10 @@ import { Tenant, TenantDocument } from 'src/tenant/entities/tenant.entity';
 import { TenantKind, TenantPaymentStatus } from 'src/tenant/entities/tenant.entity';
 import { UserRole } from 'src/user/entities/user.entity';
 import { CreateBillDto } from './dto/create-bill.dto';
+import { GenerateMonthlyBillsDto } from './dto/generate-monthly-bills.dto';
 import { QueryBillDto } from './dto/query-bill.dto';
 import { UpdateBillDto } from './dto/update-bill.dto';
-import { Bill, BillDocument, BillStatus } from './entities/bill.entity';
+import { Bill, BillDocument, BillKind, BillStatus } from './entities/bill.entity';
 
 @Injectable()
 export class BillService {
@@ -70,6 +71,107 @@ export class BillService {
     ]);
 
     return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
+  }
+
+  async generateMonthlyRentBills(
+    organizationId: string,
+    actor: JwtUser,
+    dto: GenerateMonthlyBillsDto,
+  ): Promise<any> {
+    const defaultCurrency = await this.getOrganizationDefaultCurrency(organizationId);
+    const tenantFilter: Record<string, unknown> = {
+      organizationId,
+      tenantKind: TenantKind.RENTER,
+      isActive: true,
+      monthlyRent: { $gt: 0 },
+    };
+    if (dto.propertyId) tenantFilter.propertyId = dto.propertyId;
+
+    const tenants = await this.tenantModel.find(tenantFilter).lean();
+    const now = new Date();
+    const created: any[] = [];
+    let skipped = 0;
+    let markedOverdue = 0;
+    let lateFeesApplied = 0;
+
+    for (const tenant of tenants) {
+      const dueDate = this.buildDueDate(dto.monthKey, tenant.rentDueDay ?? null);
+      const existing = await this.billModel.findOne({
+        organizationId,
+        tenantId: String(tenant._id),
+        kind: BillKind.RENT,
+        monthKey: dto.monthKey,
+      });
+
+      if (existing) {
+        skipped += 1;
+        let changed = false;
+        const shouldBeOverdue =
+          dueDate &&
+          dueDate.getTime() + (dto.graceDays ?? 0) * 86400000 < now.getTime() &&
+          [BillStatus.UNPAID, BillStatus.PARTIAL].includes(existing.status);
+
+        if (shouldBeOverdue) {
+          existing.status = BillStatus.OVERDUE;
+          markedOverdue += 1;
+          changed = true;
+        }
+
+        if (
+          dto.applyLateFees &&
+          shouldBeOverdue &&
+          dto.lateFeeAmount &&
+          !existing.note?.includes('Late fee applied')
+        ) {
+          existing.amount = (existing.amount ?? 0) + dto.lateFeeAmount;
+          existing.note = `${existing.note ? `${existing.note} | ` : ''}Late fee applied ${dto.lateFeeAmount}`;
+          lateFeesApplied += 1;
+          changed = true;
+        }
+
+        if (changed) {
+          existing.updatedByUserId = actor.id;
+          existing.updatedByName = actor.fullName;
+          existing.updatedByRole = actor.role;
+          await existing.save();
+        }
+        continue;
+      }
+
+      const bill = await this.billModel.create({
+        organizationId,
+        tenantId: String(tenant._id),
+        recipientUserId: tenant.userId ?? null,
+        propertyId: tenant.propertyId,
+        unitId: tenant.unitId ?? null,
+        kind: BillKind.RENT,
+        title: `Monthly rent ${dto.monthKey}`,
+        description: 'Auto-generated monthly rent bill',
+        amount: tenant.monthlyRent ?? 0,
+        currency: defaultCurrency,
+        monthKey: dto.monthKey,
+        dueDate,
+        status: BillStatus.UNPAID,
+        attachments: [],
+        note: 'Auto-generated monthly rent',
+        createdBy: actor.id,
+        updatedByUserId: actor.id,
+        updatedByName: actor.fullName,
+        updatedByRole: actor.role,
+        paymentMode: 'manual',
+      });
+      created.push(bill.toObject());
+    }
+
+    return {
+      monthKey: dto.monthKey,
+      tenantsScanned: tenants.length,
+      created: created.length,
+      skipped,
+      markedOverdue,
+      lateFeesApplied,
+      bills: created,
+    };
   }
 
   async findMyBills(organizationId: string, actor: JwtUser): Promise<any> {
