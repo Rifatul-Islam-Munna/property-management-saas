@@ -62,6 +62,20 @@ export class TenantController {
     return new SuccessResponseDto(200, 'Tenant profile left successfully', data);
   }
 
+  @Roles(UserRole.RENTER, UserRole.GUEST)
+  @Patch('me/profile-image')
+  async updateCurrentProfileImage(
+    @Req() req: ExpressRequest,
+    @Body() dto: { profileImage: string },
+  ): Promise<SuccessResponseDto<any>> {
+    const data = await this.tenantService.updateCurrentProfileImage(
+      req.user.organizationId ?? '',
+      req.user,
+      dto.profileImage,
+    );
+    return new SuccessResponseDto(200, 'Tenant profile image updated', data);
+  }
+
   @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.TETENTWONER)
   @Post()
   async create(

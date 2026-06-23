@@ -124,6 +124,10 @@ export class Tenant {
   @Prop({ required: true, trim: true })
   phone: string;
 
+  @ApiPropertyOptional({ example: 'https://cdn.example.com/profile.jpg' })
+  @Prop({ type: String, default: null })
+  profileImage?: string | null;
+
   @ApiPropertyOptional({ type: EmergencyContact })
   @Prop({ type: EmergencyContact, default: null })
   emergencyContact?: EmergencyContact | null;

@@ -64,6 +64,7 @@ function buildNav(role: string | undefined, pathname: string) {
             { title: "Users", url: "/dashboard/tenant-owner/users", icon: <UsersIcon /> },
             { title: "Owner Team", url: "/dashboard/tenant-owner/team", icon: <ShieldIcon /> },
             { title: "Tenants", url: "/dashboard/tenant-owner/tenants", icon: <ShieldIcon /> },
+            { title: "Staff", url: "/dashboard/tenant-owner/staff", icon: <UsersIcon /> },
             { title: "Leases", url: "/dashboard/tenant-owner/leases", icon: <FileTextIcon /> },
             { title: "Billing", url: "/dashboard/tenant-owner/billing", icon: <CreditCardIcon /> },
             { title: "Finance", url: "/dashboard/tenant-owner/finance", icon: <FileChartColumnIcon /> },

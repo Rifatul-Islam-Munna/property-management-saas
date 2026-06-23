@@ -67,6 +67,11 @@ export class CreateTenantDto {
   @IsString()
   phone: string;
 
+  @ApiPropertyOptional({ example: 'https://cdn.example.com/profile.jpg' })
+  @IsOptional()
+  @IsString()
+  profileImage?: string;
+
   @ApiPropertyOptional({ type: EmergencyContactDto })
   @IsOptional()
   @ValidateNested()

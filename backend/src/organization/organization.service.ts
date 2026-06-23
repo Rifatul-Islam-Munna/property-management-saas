@@ -5,8 +5,11 @@ import {
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
+import { AuditLogService } from 'src/audit-log/audit-log.service';
+import type { JwtUser } from 'src/lib/auth.guard';
 import { CreateOrganizationDto } from './dto/create-organization.dto';
 import { QueryOrganizationDto } from './dto/query-organization.dto';
+import { SaveBrandingSettingsDto } from './dto/save-branding-settings.dto';
 import { SaveStripeSettingsDto } from './dto/save-stripe-settings.dto';
 import { UpdateOrganizationDto } from './dto/update-organization.dto';
 import { Organization, OrganizationDocument } from './entities/organization.entity';
@@ -16,6 +19,7 @@ export class OrganizationService {
   constructor(
     @InjectModel(Organization.name)
     private readonly organizationModel: Model<OrganizationDocument>,
+    private readonly auditLogService: AuditLogService,
   ) {}
 
   async create(userId: string, dto: CreateOrganizationDto): Promise<any> {
@@ -144,7 +148,7 @@ export class OrganizationService {
     };
   }
 
-  async saveStripeSettings(organizationId: string, dto: SaveStripeSettingsDto): Promise<any> {
+  async saveStripeSettings(organizationId: string, actor: JwtUser, dto: SaveStripeSettingsDto): Promise<any> {
     const organization = await this.organizationModel.findById(organizationId);
     if (!organization) throw new NotFoundException('Organization not found');
 
@@ -169,7 +173,51 @@ export class OrganizationService {
     };
 
     await organization.save();
+    await this.auditLogService.record({
+      organizationId,
+      actor,
+      action: 'stripe_settings_updated',
+      entityType: 'organization',
+      entityId: organizationId,
+      metadata: { defaultCurrency: organization.settings.stripe.defaultCurrency },
+    });
     return this.getStripeSettingsStatus(organizationId);
+  }
+
+  async getBrandingSettings(organizationId: string): Promise<any> {
+    const organization = await this.organizationModel.findById(organizationId).lean();
+    if (!organization) throw new NotFoundException('Organization not found');
+
+    const branding = organization.settings?.branding ?? {};
+    return {
+      logoUrl: branding.logoUrl ?? organization.logo ?? '',
+    };
+  }
+
+  async saveBrandingSettings(organizationId: string, actor: JwtUser, dto: SaveBrandingSettingsDto): Promise<any> {
+    const organization = await this.organizationModel.findById(organizationId);
+    if (!organization) throw new NotFoundException('Organization not found');
+
+    const currentBranding = organization.settings?.branding ?? {};
+    organization.settings = {
+      ...(organization.settings ?? {}),
+      branding: {
+        logoUrl: dto.logoUrl?.trim() ?? currentBranding.logoUrl ?? organization.logo ?? '',
+      },
+    };
+
+    await organization.save();
+    await this.auditLogService.record({
+      organizationId,
+      actor,
+      action: 'branding_settings_updated',
+      entityType: 'organization',
+      entityId: organizationId,
+      metadata: {
+        logoUrl: organization.settings.branding.logoUrl,
+      },
+    });
+    return this.getBrandingSettings(organizationId);
   }
 
   private maskStripeKey(value?: string | null): string | null {

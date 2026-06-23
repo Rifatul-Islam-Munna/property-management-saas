@@ -3,6 +3,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import type { JwtUser } from 'src/lib/auth.guard';
 import { Bill, BillDocument, BillStatus } from 'src/bill/entities/bill.entity';
+import { AuditLogService } from 'src/audit-log/audit-log.service';
 import { Organization, OrganizationDocument } from 'src/organization/entities/organization.entity';
 import { Property, PropertyDocument } from 'src/property/entities/property.entity';
 import { Tenant, TenantDocument } from 'src/tenant/entities/tenant.entity';
@@ -40,6 +41,7 @@ export class NotificationService {
     private readonly billModel: Model<BillDocument>,
     private readonly mailDeliveryService: MailDeliveryService,
     private readonly smsDeliveryService: SmsDeliveryService,
+    private readonly auditLogService: AuditLogService,
   ) {}
 
   async getSettings(organizationId: string): Promise<any> {
@@ -48,7 +50,7 @@ export class NotificationService {
     return this.normalizeSettings(organization.settings?.notifications ?? {});
   }
 
-  async saveSettings(organizationId: string, dto: NotificationSettingsDto): Promise<any> {
+  async saveSettings(organizationId: string, dto: NotificationSettingsDto, actor?: JwtUser): Promise<any> {
     const organization = await this.organizationModel.findById(organizationId);
     if (!organization) throw new NotFoundException('Organization not found');
     const current = this.normalizeSettings(organization.settings?.notifications ?? {});
@@ -58,11 +60,28 @@ export class NotificationService {
         ...current,
         ...dto,
         overdueRentChannels: dto.overdueRentChannels ?? current.overdueRentChannels,
+        overdueRentMaxSends: this.clampReminderMax(dto.overdueRentMaxSends ?? current.overdueRentMaxSends),
         inspectionChannels: dto.inspectionChannels ?? current.inspectionChannels,
         recurringMaintenanceChannels: dto.recurringMaintenanceChannels ?? current.recurringMaintenanceChannels,
+        vendorQuoteWinnerMessageTemplate: dto.vendorQuoteWinnerMessageTemplate ?? current.vendorQuoteWinnerMessageTemplate,
+        vendorQuoteRejectionMessageTemplate: dto.vendorQuoteRejectionMessageTemplate ?? current.vendorQuoteRejectionMessageTemplate,
       },
     };
     await organization.save();
+    if (actor) {
+      await this.auditLogService.record({
+        organizationId,
+        actor,
+        action: 'notification_settings_updated',
+        entityType: 'notification_settings',
+        entityId: organizationId,
+        metadata: {
+          overdueRentEnabled: organization.settings.notifications.overdueRentEnabled,
+          inspectionEnabled: organization.settings.notifications.inspectionEnabled,
+          recurringMaintenanceEnabled: organization.settings.notifications.recurringMaintenanceEnabled,
+        },
+      });
+    }
     return this.getSettings(organizationId);
   }
 
@@ -151,6 +170,14 @@ export class NotificationService {
         );
 
         for (const channel of settings.overdueRentChannels) {
+          const sentCount = await this.logModel.countDocuments({
+            organizationId: String(organization._id),
+            recipientId: String(tenant._id),
+            channel,
+            triggerKey: { $regex: `^overdue-rent:${bill._id}:` },
+          });
+          if (sentCount >= settings.overdueRentMaxSends) continue;
+
           const exists = await this.logModel.exists({
             organizationId: String(organization._id),
             triggerKey,
@@ -278,11 +305,18 @@ export class NotificationService {
     return Math.floor(epochDay / Math.max(1, days));
   }
 
+  private clampReminderMax(value: any) {
+    const numeric = Number(value ?? 3);
+    if (!Number.isFinite(numeric)) return 3;
+    return Math.min(6, Math.max(1, Math.floor(numeric)));
+  }
+
   private normalizeSettings(value: any) {
     return {
       overdueRentEnabled: Boolean(value.overdueRentEnabled),
       overdueRentDaysAfterDue: Number(value.overdueRentDaysAfterDue ?? 1),
       overdueRentRepeatEveryDays: Number(value.overdueRentRepeatEveryDays ?? 3),
+      overdueRentMaxSends: this.clampReminderMax(value.overdueRentMaxSends ?? 3),
       overdueRentChannels: Array.isArray(value.overdueRentChannels) && value.overdueRentChannels.length
         ? value.overdueRentChannels
         : ['email'],
@@ -303,6 +337,12 @@ export class NotificationService {
       workerCreatedTemplateId: value.workerCreatedTemplateId ?? '',
       noticeCreatedChannels: value.noticeCreatedChannels ?? [],
       noticeCreatedTemplateId: value.noticeCreatedTemplateId ?? '',
+      vendorQuoteWinnerMessageTemplate:
+        value.vendorQuoteWinnerMessageTemplate ??
+        'Hi {{vendor_name}}, your quote for {{request_title}} was selected. Amount: {{amount}} {{currency}}. Owner will contact you soon.',
+      vendorQuoteRejectionMessageTemplate:
+        value.vendorQuoteRejectionMessageTemplate ??
+        'Hi {{vendor_name}}, thank you for quoting {{request_title}}. Owner selected another vendor this time.',
     };
   }
 }

@@ -17,12 +17,14 @@ import type {
   NotificationTemplateItem,
   PropertyItem,
   RecurringMaintenanceItem,
+  StaffItem,
   TechnicianItem,
   TenantItem,
   UnitItem,
   TicketItem,
   VendorItem,
   VendorQuoteItem,
+  VendorQuoteRequestItem,
   WorkOrderItem,
 } from "@/lib/types/dashboard"
 
@@ -102,6 +104,7 @@ type OwnerTenantPayload = {
   fullName: string
   email: string
   phone: string
+  profileImage?: string
   address?: string
   monthlyRent?: number
   rentDueDay?: number
@@ -136,6 +139,41 @@ type OwnerTechnicianPayload = {
   hourlyRate?: number
   notes?: string
   isActive?: boolean
+}
+
+type OwnerStaffPayload = {
+  propertyId: string
+  fullName: string
+  email?: string
+  phone?: string
+  role: string
+  image?: string
+  workDescription?: string
+  workStart?: string
+  workEnd?: string
+  monthlyPay?: number
+  currency?: string
+  status?: "active" | "on_leave" | "inactive"
+  isActive?: boolean
+}
+
+type OwnerStaffPaymentPayload = {
+  id: string
+  payload: {
+    monthKey: string
+    amount?: number
+    currency?: string
+    note?: string
+  }
+}
+
+type OwnerStaffMessagePayload = {
+  id: string
+  payload: {
+    subject?: string
+    body: string
+    channels?: Array<"email" | "sms">
+  }
 }
 
 type NoticePayload = {
@@ -294,6 +332,19 @@ type OwnerVendorQuotePayload = {
   status?: "requested" | "submitted" | "approved" | "rejected"
   attachments?: string[]
   ownerNote?: string
+}
+
+type OwnerVendorQuoteRequestPayload = {
+  propertyId: string
+  unitId?: string
+  title: string
+  description?: string
+  budgetAmount?: number
+  currency?: string
+  dueDate?: string
+  attachments?: string[]
+  winnerMessageTemplate?: string
+  rejectionMessageTemplate?: string
 }
 
 type OwnerVendorQuoteUpdatePayload = {
@@ -783,6 +834,74 @@ export function useOwnerCreateVendorMutation() {
   })
 }
 
+export function useOwnerCreateStaffMutation() {
+  const queryClient = useQueryClient()
+  return useCommonMutationApi<ApiSuccessResponse<StaffItem>, OwnerStaffPayload>({
+    url: "/staff",
+    method: "POST",
+    mutationKey: ["owner", "create", "staff"],
+    successMessage: "Staff added",
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["owner", "staff"] })
+    },
+  })
+}
+
+export function useOwnerUpdateStaffMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationKey: ["owner", "update", "staff"],
+    mutationFn: async ({ id, payload }: { id: string; payload: Partial<OwnerStaffPayload> }) => {
+      const [data, error] = await patchRequest<ApiSuccessResponse<StaffItem>, typeof payload>(`/staff/${id}`, payload)
+      if (error || !data) throw new Error(error?.message ?? "Staff update failed")
+      return data
+    },
+    onSuccess: async () => {
+      toast.success("Staff updated")
+      await queryClient.invalidateQueries({ queryKey: ["owner", "staff"] })
+    },
+    onError: (error: Error) => toast.error(error.message),
+  })
+}
+
+export function useOwnerPayStaffMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationKey: ["owner", "pay", "staff"],
+    mutationFn: async ({ id, payload }: OwnerStaffPaymentPayload) => {
+      const [data, error] = await postRequest<ApiSuccessResponse<StaffItem>, typeof payload>(`/staff/${id}/pay`, payload)
+      if (error || !data) throw new Error(error?.message ?? "Staff payment failed")
+      return data
+    },
+    onSuccess: async () => {
+      toast.success("Staff payment recorded")
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["owner", "staff"] }),
+        queryClient.invalidateQueries({ queryKey: ["owner", "finance-entries"] }),
+        queryClient.invalidateQueries({ queryKey: ["owner", "analytics", "dashboard"] }),
+      ])
+    },
+    onError: (error: Error) => toast.error(error.message),
+  })
+}
+
+export function useOwnerSendStaffMessageMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationKey: ["owner", "message", "staff"],
+    mutationFn: async ({ id, payload }: OwnerStaffMessagePayload) => {
+      const [data, error] = await postRequest<ApiSuccessResponse<StaffItem>, typeof payload>(`/staff/${id}/message`, payload)
+      if (error || !data) throw new Error(error?.message ?? "Staff message failed")
+      return data
+    },
+    onSuccess: async () => {
+      toast.success("Staff message sent")
+      await queryClient.invalidateQueries({ queryKey: ["owner", "staff"] })
+    },
+    onError: (error: Error) => toast.error(error.message),
+  })
+}
+
 export function useOwnerCreateAssetMutation() {
   const queryClient = useQueryClient()
   return useCommonMutationApi<ApiSuccessResponse<AssetItem>, OwnerAssetPayload>({
@@ -827,6 +946,41 @@ export function useOwnerCreateVendorQuoteMutation() {
     successMessage: "Vendor quote created",
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["owner", "vendor-quotes"] })
+    },
+  })
+}
+
+export function useOwnerCreateVendorQuoteRequestMutation() {
+  const queryClient = useQueryClient()
+  return useCommonMutationApi<ApiSuccessResponse<VendorQuoteRequestItem>, OwnerVendorQuoteRequestPayload>({
+    url: "/vendor-quote/marketplace-requests",
+    method: "POST",
+    mutationKey: ["owner", "create", "vendor-quote-request"],
+    successMessage: "Public quote request created",
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["owner", "vendor-quote-requests"] })
+    },
+  })
+}
+
+export function useOwnerSelectVendorQuoteSubmissionMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationKey: ["owner", "select", "vendor-quote-submission"],
+    mutationFn: async ({ requestId, submissionId }: { requestId: string; submissionId: string }) => {
+      const [data, error] = await patchRequest<ApiSuccessResponse<VendorQuoteRequestItem>, undefined>(
+        `/vendor-quote/marketplace-requests/${requestId}/select/${submissionId}`,
+        undefined
+      )
+      if (error || !data) throw new Error(error?.message ?? "Vendor selection failed")
+      return data
+    },
+    onSuccess: async () => {
+      toast.success("Vendor selected and messages sent")
+      await queryClient.invalidateQueries({ queryKey: ["owner", "vendor-quote-requests"] })
+    },
+    onError: (error: Error) => {
+      toast.error(error.message)
     },
   })
 }

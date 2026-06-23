@@ -326,6 +326,32 @@ export class TenantService {
     return tenant;
   }
 
+  async updateCurrentProfileImage(
+    organizationId: string,
+    actor: JwtUser,
+    profileImage: string,
+  ): Promise<any> {
+    const tenant =
+      (organizationId
+        ? await this.tenantModel.findOne({
+            organizationId,
+            $or: [{ userId: actor.id }, { email: actor.email }],
+          })
+        : null) ??
+      (await this.tenantModel
+        .findOne({ $or: [{ userId: actor.id }, { email: actor.email }] })
+        .sort({ createdAt: -1 }));
+
+    if (!tenant) throw new NotFoundException('Tenant not found');
+
+    tenant.profileImage = profileImage;
+    tenant.updatedByUserId = actor.id;
+    tenant.updatedByName = actor.fullName;
+    tenant.updatedByRole = actor.role;
+    await tenant.save();
+    return tenant.toObject();
+  }
+
   async leaveCurrentTenantProfile(
     organizationId: string,
     userId: string,

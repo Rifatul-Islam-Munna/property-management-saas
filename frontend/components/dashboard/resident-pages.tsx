@@ -41,7 +41,7 @@ import {
   DashboardTableSkeleton,
   WithBone,
 } from "@/components/dashboard/dashboard-loading"
-import { useResidentCreateTicketMutation, useResidentLeaveTenantMutation, useResidentSendMessageMutation, useResidentUpdateAssignmentRequestMutation } from "@/hooks/use-resident-actions"
+import { useResidentCreateTicketMutation, useResidentLeaveTenantMutation, useResidentSendMessageMutation, useResidentUpdateAssignmentRequestMutation, useResidentUpdateProfileImageMutation } from "@/hooks/use-resident-actions"
 import {
   useResidentAnnouncementsQuery,
   useResidentAssignmentRequestsQuery,
@@ -1462,6 +1462,12 @@ export function ResidentInspectionsPage() {
 export function ResidentSettingsPage() {
   const { data: me, isLoading } = useResidentMeQuery()
   const workspace = useResidentWorkspaceQuery()
+  const updateProfileImage = useResidentUpdateProfileImageMutation()
+  const [profileImages, setProfileImages] = useState<string[]>([])
+
+  useEffect(() => {
+    setProfileImages(workspace.data?.tenant?.profileImage ? [workspace.data.tenant.profileImage] : [])
+  }, [workspace.data?.tenant?.profileImage])
 
   return (
     <div className="space-y-6">
@@ -1471,6 +1477,18 @@ export function ResidentSettingsPage() {
           <Card className="shadow-none">
             <CardHeader><CardTitle>Account</CardTitle><CardDescription>Resident access and current links.</CardDescription></CardHeader>
             <CardContent className="space-y-4 text-sm text-slate-700">
+              <div className="rounded-xl border p-4">
+                <p className="font-medium text-slate-950">Profile image</p>
+                {workspace.data?.tenant?.profileImage ? (
+                  <img src={workspace.data.tenant.profileImage} alt={workspace.data.tenant.fullName} className="mt-3 size-24 rounded-full border object-cover" />
+                ) : null}
+                <div className="mt-3">
+                  <UploadCollectionField label="Upload image" accept="image/*" kind="image" values={profileImages} onChange={(values) => setProfileImages(values.slice(-1))} />
+                </div>
+                <Button type="button" className="mt-3" disabled={updateProfileImage.isPending || !profileImages[0]} onClick={() => updateProfileImage.mutate(profileImages[0])}>
+                  {updateProfileImage.isPending ? "Saving..." : "Save profile image"}
+                </Button>
+              </div>
               <div className="rounded-xl border p-4"><p className="font-medium text-slate-950">Status</p><p className="mt-1">{me?.status ?? "unknown"}</p></div>
               <div className="rounded-xl border p-4"><p className="font-medium text-slate-950">Owner</p><p className="mt-1 break-all">{me?.activeOwnerId ?? "No linked owner"}</p></div>
               <div className="rounded-xl border p-4"><p className="font-medium text-slate-950">Property</p><p className="mt-1 break-all">{me?.activePropertyId ?? "No linked property"}</p></div>

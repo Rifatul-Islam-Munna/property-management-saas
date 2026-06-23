@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
+import { AuditLogModule } from 'src/audit-log/audit-log.module';
 import { Bill, BillSchema } from 'src/bill/entities/bill.entity';
 import { Organization, OrganizationSchema } from 'src/organization/entities/organization.entity';
 import { Property, PropertySchema } from 'src/property/entities/property.entity';
@@ -16,6 +17,7 @@ import { SmsDeliveryService } from './sms-delivery.service';
 
 @Module({
   imports: [
+    AuditLogModule,
     MongooseModule.forFeature([
       { name: NotificationTemplate.name, schema: NotificationTemplateSchema },
       { name: NotificationDeliveryLog.name, schema: NotificationDeliveryLogSchema },
@@ -29,6 +31,6 @@ import { SmsDeliveryService } from './sms-delivery.service';
   ],
   controllers: [NotificationController],
   providers: [NotificationService, NotificationSchedulerService, MailDeliveryService, SmsDeliveryService],
-  exports: [NotificationService],
+  exports: [NotificationService, MailDeliveryService, SmsDeliveryService],
 })
 export class NotificationModule {}

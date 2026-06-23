@@ -30,7 +30,7 @@ export class NotificationController {
   @Patch('settings')
   @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.TETENTWONER)
   async saveSettings(@Req() req: ExpressRequest, @Body() dto: NotificationSettingsDto): Promise<SuccessResponseDto> {
-    const data = await this.notificationService.saveSettings(req.user.organizationId ?? '', dto);
+    const data = await this.notificationService.saveSettings(req.user.organizationId ?? '', dto, req.user);
     return new SuccessResponseDto(200, 'Notification settings saved', data);
   }
 

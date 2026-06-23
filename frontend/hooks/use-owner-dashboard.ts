@@ -16,6 +16,7 @@ import type {
   NotificationTemplateItem,
   PropertyItem,
   RecurringMaintenanceItem,
+  StaffItem,
   TechnicianItem,
   TechnicianStats,
   TenantItem,
@@ -24,6 +25,7 @@ import type {
   UnitItem,
   VendorItem,
   VendorQuoteItem,
+  VendorQuoteRequestItem,
   WorkOrderItem,
 } from "@/lib/types/dashboard"
 
@@ -275,6 +277,29 @@ export function useOwnerVendorsQuery() {
   })
 }
 
+export function useOwnerStaffQuery(params?: {
+  page?: number
+  limit?: number
+  propertyId?: string
+  status?: "active" | "on_leave" | "inactive"
+  search?: string
+}) {
+  const searchParams = new URLSearchParams()
+  if (params?.page) searchParams.set("page", String(params.page))
+  if (params?.limit) searchParams.set("limit", String(params.limit))
+  if (params?.propertyId) searchParams.set("propertyId", params.propertyId)
+  if (params?.status) searchParams.set("status", params.status)
+  if (params?.search?.trim()) searchParams.set("search", params.search.trim())
+  const queryString = searchParams.toString()
+
+  return useQueryWrapper<
+    ApiSuccessResponse<PaginatedResult<StaffItem>>,
+    StaffItem[]
+  >(["owner", "staff", params ?? {}], `/staff${queryString ? `?${queryString}` : ""}`, {
+    select: (response) => response?.data?.data ?? [],
+  })
+}
+
 export function useOwnerAssetsQuery(params?: {
   page?: number
   limit?: number
@@ -321,6 +346,15 @@ export function useOwnerVendorQuotesQuery(params?: {
     ApiSuccessResponse<PaginatedResult<VendorQuoteItem>>,
     VendorQuoteItem[]
   >(["owner", "vendor-quotes", params ?? {}], `/vendor-quote${queryString ? `?${queryString}` : ""}`, {
+    select: (response) => response?.data?.data ?? [],
+  })
+}
+
+export function useOwnerVendorQuoteRequestsQuery() {
+  return useQueryWrapper<
+    ApiSuccessResponse<PaginatedResult<VendorQuoteRequestItem>>,
+    VendorQuoteRequestItem[]
+  >(["owner", "vendor-quote-requests"], "/vendor-quote/marketplace-requests", {
     select: (response) => response?.data?.data ?? [],
   })
 }

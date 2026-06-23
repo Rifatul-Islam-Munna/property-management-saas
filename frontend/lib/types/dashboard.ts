@@ -160,6 +160,7 @@ export type TenantItem = AuditFields & {
   email?: string
   phone?: string
   phoneNumber?: string
+  profileImage?: string | null
   tenantKind?: string
   address?: string | null
   leaseStart?: string | null
@@ -463,6 +464,41 @@ export type VendorItem = AuditFields & {
   isActive?: boolean
 }
 
+export type StaffItem = AuditFields & {
+  _id: string
+  organizationId: string
+  propertyId: string
+  fullName: string
+  email?: string | null
+  phone?: string | null
+  role: string
+  image?: string | null
+  workDescription?: string | null
+  workStart?: string | null
+  workEnd?: string | null
+  monthlyPay?: number | null
+  currency?: string | null
+  status: "active" | "on_leave" | "inactive"
+  paymentRecords?: Array<{
+    monthKey: string
+    amount: number
+    currency: string
+    status: "pending" | "paid"
+    paidAt?: string | null
+    financeEntryId?: string | null
+    note?: string | null
+  }>
+  messages?: Array<{
+    subject?: string | null
+    body: string
+    channels: Array<"email" | "sms">
+    sentAt?: string
+    sentBy: string
+  }>
+  isActive?: boolean
+  createdAt?: string
+}
+
 export type AssetItem = AuditFields & {
   _id: string
   propertyId: string
@@ -497,6 +533,40 @@ export type VendorQuoteItem = AuditFields & {
   createdAt?: string
 }
 
+export type VendorQuoteSubmissionItem = {
+  _id: string
+  vendorName: string
+  vendorEmail: string
+  vendorPhone?: string | null
+  amount: number
+  currency: string
+  timeline?: string | null
+  proposalNote?: string | null
+  paymentTerms?: string | null
+  attachments?: string[]
+  status: "submitted" | "selected" | "rejected"
+  selectedAt?: string | null
+  createdAt?: string
+}
+
+export type VendorQuoteRequestItem = AuditFields & {
+  _id: string
+  propertyId: string
+  unitId?: string | null
+  title: string
+  description?: string | null
+  budgetAmount?: number | null
+  currency: string
+  dueDate?: string | null
+  attachments?: string[]
+  status: "open" | "awarded" | "closed"
+  submissions?: VendorQuoteSubmissionItem[]
+  selectedSubmissionId?: string | null
+  winnerMessageTemplate?: string
+  rejectionMessageTemplate?: string
+  createdAt?: string
+}
+
 export type NotificationTemplateItem = AuditFields & {
   _id: string
   name: string
@@ -511,6 +581,7 @@ export type NotificationSettingsItem = {
   overdueRentEnabled: boolean
   overdueRentDaysAfterDue: number
   overdueRentRepeatEveryDays: number
+  overdueRentMaxSends?: number
   overdueRentChannels: Array<"email" | "sms">
   overdueRentTemplateId?: string
   inspectionEnabled?: boolean
@@ -525,6 +596,8 @@ export type NotificationSettingsItem = {
   workerCreatedTemplateId?: string
   noticeCreatedChannels?: Array<"email" | "sms">
   noticeCreatedTemplateId?: string
+  vendorQuoteWinnerMessageTemplate?: string
+  vendorQuoteRejectionMessageTemplate?: string
 }
 
 export type UploadImageResponse = {

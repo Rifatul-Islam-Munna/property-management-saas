@@ -5,7 +5,7 @@ import { toast } from "sonner"
 import { patchRequest, postRequest } from "@/api-hooks/api-hooks"
 import { useCommonMutationApi } from "@/api-hooks/use-api-mutation"
 import type { ApiSuccessResponse } from "@/lib/types/api"
-import type { MessageItem, TicketItem } from "@/lib/types/dashboard"
+import type { MessageItem, TenantItem, TicketItem } from "@/lib/types/dashboard"
 
 type ResidentTicketPayload = {
   propertyId: string
@@ -132,6 +132,28 @@ export function useResidentLeaveTenantMutation() {
         queryClient.invalidateQueries({ queryKey: ["resident", "bills"] }),
         queryClient.invalidateQueries({ queryKey: ["resident", "me"] }),
       ])
+    },
+    onError: (error: Error) => {
+      toast.error(error.message)
+    },
+  })
+}
+
+export function useResidentUpdateProfileImageMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationKey: ["resident", "update", "profile-image"],
+    mutationFn: async (profileImage: string) => {
+      const [data, error] = await patchRequest<ApiSuccessResponse<TenantItem>, { profileImage: string }>(
+        "/tenant/me/profile-image",
+        { profileImage }
+      )
+      if (error || !data) throw new Error(error?.message ?? "Profile image update failed")
+      return data
+    },
+    onSuccess: async () => {
+      toast.success("Profile image updated")
+      await queryClient.invalidateQueries({ queryKey: ["resident", "workspace"] })
     },
     onError: (error: Error) => {
       toast.error(error.message)

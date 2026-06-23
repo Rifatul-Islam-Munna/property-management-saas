@@ -7,8 +7,10 @@ import { Roles } from 'src/lib/roles.decorator';
 import { RolesGuard } from 'src/lib/roles.guard';
 import { SuccessResponseDto } from 'src/lib/success-response.dto';
 import { UserRole } from 'src/user/entities/user.entity';
+import { CreateVendorMarketplaceRequestDto } from './dto/create-vendor-marketplace-request.dto';
 import { CreateVendorQuoteDto } from './dto/create-vendor-quote.dto';
 import { QueryVendorQuoteDto } from './dto/query-vendor-quote.dto';
+import { SubmitVendorMarketplaceQuoteDto } from './dto/submit-vendor-marketplace-quote.dto';
 import { UpdateVendorQuoteDto } from './dto/update-vendor-quote.dto';
 import { VendorQuoteService } from './vendor-quote.service';
 
@@ -18,6 +20,49 @@ import { VendorQuoteService } from './vendor-quote.service';
 @Controller('vendor-quote')
 export class VendorQuoteController {
   constructor(private readonly vendorQuoteService: VendorQuoteService) {}
+
+  @Post('marketplace-requests')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.TETENTWONER)
+  async createMarketplaceRequest(
+    @Req() req: ExpressRequest,
+    @Body() dto: CreateVendorMarketplaceRequestDto,
+  ): Promise<SuccessResponseDto> {
+    const data = await this.vendorQuoteService.createMarketplaceRequest(req.user.organizationId ?? '', req.user, dto);
+    return new SuccessResponseDto(201, 'Vendor marketplace request created', data);
+  }
+
+  @Get('marketplace-requests')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.TETENTWONER)
+  async findMarketplaceRequests(@Req() req: ExpressRequest): Promise<SuccessResponseDto> {
+    const data = await this.vendorQuoteService.findMarketplaceRequests(req.user.organizationId ?? '');
+    return new SuccessResponseDto(200, 'Vendor marketplace requests fetched', data);
+  }
+
+  @Get('marketplace-requests/public/:id')
+  async getPublicMarketplaceRequest(@Param('id') id: string): Promise<SuccessResponseDto> {
+    const data = await this.vendorQuoteService.getPublicMarketplaceRequest(id);
+    return new SuccessResponseDto(200, 'Vendor marketplace request fetched', data);
+  }
+
+  @Post('marketplace-requests/public/:id/submissions')
+  async submitPublicMarketplaceQuote(
+    @Param('id') id: string,
+    @Body() dto: SubmitVendorMarketplaceQuoteDto,
+  ): Promise<SuccessResponseDto> {
+    const data = await this.vendorQuoteService.submitPublicMarketplaceQuote(id, dto);
+    return new SuccessResponseDto(201, 'Vendor quote submitted', data);
+  }
+
+  @Patch('marketplace-requests/:id/select/:submissionId')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.TETENTWONER)
+  async selectMarketplaceSubmission(
+    @Req() req: ExpressRequest,
+    @Param('id', MongoIdPipe) id: string,
+    @Param('submissionId') submissionId: string,
+  ): Promise<SuccessResponseDto> {
+    const data = await this.vendorQuoteService.selectMarketplaceSubmission(req.user.organizationId ?? '', req.user, id, submissionId);
+    return new SuccessResponseDto(200, 'Vendor submission selected', data);
+  }
 
   @Post()
   @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.TETENTWONER)

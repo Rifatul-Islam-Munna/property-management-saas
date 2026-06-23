@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsArray, IsBoolean, IsNumber, IsOptional, IsString, Min } from 'class-validator';
+import { IsArray, IsBoolean, IsNumber, IsOptional, IsString, Max, Min } from 'class-validator';
 
 export class NotificationSettingsDto {
   @ApiPropertyOptional()
@@ -18,6 +18,13 @@ export class NotificationSettingsDto {
   @IsNumber()
   @Min(1)
   overdueRentRepeatEveryDays?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  @Max(6)
+  overdueRentMaxSends?: number;
 
   @ApiPropertyOptional({ type: [String] })
   @IsOptional()
@@ -94,4 +101,14 @@ export class NotificationSettingsDto {
   @IsOptional()
   @IsString()
   noticeCreatedTemplateId?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  vendorQuoteWinnerMessageTemplate?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  vendorQuoteRejectionMessageTemplate?: string;
 }

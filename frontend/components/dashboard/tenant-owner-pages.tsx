@@ -9,6 +9,7 @@ import {
   ClipboardCheck,
   CreditCard,
   CalendarDays,
+  Copy,
   Download,
   Eye,
   FileChartColumn,
@@ -17,6 +18,7 @@ import {
   Home,
   Pencil,
   Repeat,
+  QrCode,
   Settings2,
   Shield,
   Ticket,
@@ -56,7 +58,7 @@ import {
   WithBone,
 } from "@/components/dashboard/dashboard-loading"
 import { useMeQuery } from "@/hooks/use-auth"
-import { useOrganizationStripeSettingsQuery } from "@/hooks/use-organization-settings"
+import { useOrganizationBrandingSettingsQuery, useOrganizationStripeSettingsQuery } from "@/hooks/use-organization-settings"
 import type { AuthUser } from "@/lib/types/auth"
 import {
   useOwnerAssignTicketMutation,
@@ -70,7 +72,8 @@ import {
   useOwnerCreateUserMutation,
   useOwnerCreateUnitMutation,
   useOwnerCreateVendorMutation,
-  useOwnerCreateVendorQuoteMutation,
+  useOwnerCreateStaffMutation,
+  useOwnerCreateVendorQuoteRequestMutation,
   useOwnerCreateWorkOrderMutation,
   useOwnerCreateAssignmentRequestMutation,
   useOwnerCreateAssetMutation,
@@ -85,6 +88,8 @@ import {
   useOwnerRecordTenantPaymentMutation,
   useOwnerSaveNotificationSettingsMutation,
   useOwnerSendNotificationTemplateMutation,
+  useOwnerSendStaffMessageMutation,
+  useOwnerPayStaffMutation,
   useOwnerTogglePropertyMutation,
   useOwnerToggleTechnicianMutation,
   useOwnerToggleTenantMutation,
@@ -93,8 +98,10 @@ import {
   useOwnerUpdateAssetMutation,
   useOwnerUpdateInspectionMutation,
   useOwnerUpdateRecurringMaintenanceMutation,
+  useOwnerUpdateStaffMutation,
   useOwnerUpdateTenantMutation,
   useOwnerUpdateVendorQuoteMutation,
+  useOwnerSelectVendorQuoteSubmissionMutation,
   useOwnerUpdateTicketMutation,
   useOwnerUpdateWorkOrderMutation,
 } from "@/hooks/use-owner-actions"
@@ -109,6 +116,7 @@ import {
   useOwnerNotificationTemplatesQuery,
   useOwnerPropertiesQuery,
   useOwnerRecurringMaintenancesQuery,
+  useOwnerStaffQuery,
   useOwnerTechniciansQuery,
   useOwnerTenantsQuery,
   useOwnerTicketsQuery,
@@ -117,6 +125,7 @@ import {
   useOwnerUsersQuery,
   useOwnerVendorsQuery,
   useOwnerVendorQuotesQuery,
+  useOwnerVendorQuoteRequestsQuery,
   useOwnerWorkOrdersQuery,
 } from "@/hooks/use-owner-dashboard"
 import type { ApiSuccessResponse } from "@/lib/types/api"
@@ -189,6 +198,51 @@ function formatDateLabel(value?: string | Date | null, fallback = "Not set") {
   const parsed = new Date(value)
   if (Number.isNaN(parsed.getTime())) return fallback
   return parsed.toLocaleDateString()
+}
+
+function buildPublicTenantUrl(tenantId: string) {
+  const origin = typeof window !== "undefined" ? window.location.origin : ""
+  return `${origin}/public/tenant/${tenantId}`
+}
+
+function buildQrImageUrl(value: string) {
+  return `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(value)}`
+}
+
+async function downloadQrCode(value: string, fileName: string, label?: string) {
+  const response = await fetch(buildQrImageUrl(value))
+  const blob = await response.blob()
+  let outputBlob = blob
+
+  if (label?.trim()) {
+    const bitmap = await createImageBitmap(blob)
+    const canvas = document.createElement("canvas")
+    canvas.width = 280
+    canvas.height = 330
+    const context = canvas.getContext("2d")
+
+    if (context) {
+      context.fillStyle = "#ffffff"
+      context.fillRect(0, 0, canvas.width, canvas.height)
+      context.drawImage(bitmap, 30, 20, 220, 220)
+      context.fillStyle = "#0f172a"
+      context.font = "600 18px sans-serif"
+      context.textAlign = "center"
+      const text = label.trim()
+      const fittedText = text.length > 28 ? `${text.slice(0, 25)}...` : text
+      context.fillText(fittedText, canvas.width / 2, 280)
+      outputBlob = await new Promise<Blob>((resolve) => {
+        canvas.toBlob((nextBlob) => resolve(nextBlob ?? blob), "image/png")
+      })
+    }
+  }
+
+  const url = URL.createObjectURL(outputBlob)
+  const link = document.createElement("a")
+  link.href = url
+  link.download = fileName
+  link.click()
+  URL.revokeObjectURL(url)
 }
 
 function toDateInputValue(value?: string | Date | null) {
@@ -1722,6 +1776,8 @@ export function TenantOwnerTenantsPage() {
   const [isPaymentOpen, setIsPaymentOpen] = useState(false)
   const [page, setPage] = useState(1)
   const [billFiles, setBillFiles] = useState<string[]>([])
+  const [profileImages, setProfileImages] = useState<string[]>([])
+  const [editProfileImages, setEditProfileImages] = useState<string[]>([])
   const [linkedUserSearch, setLinkedUserSearch] = useState("")
   const [selectedLinkedUser, setSelectedLinkedUser] = useState<AuthUser | null>(null)
   const [form, setForm] = useState({
@@ -1732,6 +1788,7 @@ export function TenantOwnerTenantsPage() {
     fullName: "",
     email: "",
     phone: "",
+    profileImage: "",
     monthlyRent: "",
     rentDueDay: "",
     oneTimeGuestFee: "",
@@ -1753,6 +1810,7 @@ export function TenantOwnerTenantsPage() {
     fullName: "",
     email: "",
     phone: "",
+    profileImage: "",
     monthlyRent: "",
     rentDueDay: "",
     oneTimeGuestFee: "",
@@ -1787,6 +1845,7 @@ export function TenantOwnerTenantsPage() {
       fullName: tenant.fullName ?? "",
       email: tenant.email ?? "",
       phone: tenant.phone ?? tenant.phoneNumber ?? "",
+      profileImage: tenant.profileImage ?? "",
       monthlyRent: tenant.monthlyRent != null ? String(tenant.monthlyRent) : "",
       rentDueDay: tenant.rentDueDay != null ? String(tenant.rentDueDay) : "",
       oneTimeGuestFee: tenant.oneTimeGuestFee != null ? String(tenant.oneTimeGuestFee) : "",
@@ -1878,8 +1937,9 @@ export function TenantOwnerTenantsPage() {
                   userId: form.userId || undefined,
                   fullName: form.fullName || linkedUser?.fullName || "",
                   email: form.email || linkedUser?.email || "",
-                  phone: form.phone || linkedUser?.phoneNumber || "",
-                  monthlyRent: Number(form.monthlyRent || "0") || undefined,
+                                  phone: form.phone || linkedUser?.phoneNumber || "",
+                                  profileImage: profileImages[0] || undefined,
+                                  monthlyRent: Number(form.monthlyRent || "0") || undefined,
                   rentDueDay: Number(form.rentDueDay || "0") || undefined,
                   oneTimeGuestFee: Number(form.oneTimeGuestFee || "0") || undefined,
                 },
@@ -1893,12 +1953,14 @@ export function TenantOwnerTenantsPage() {
                       fullName: "",
                       email: "",
                       phone: "",
+                      profileImage: "",
                       monthlyRent: "",
                       rentDueDay: "",
                       oneTimeGuestFee: "",
                     })
                     setSelectedLinkedUser(null)
                     setLinkedUserSearch("")
+                    setProfileImages([])
                     setIsCreateOpen(false)
                   },
                 }
@@ -1982,6 +2044,7 @@ export function TenantOwnerTenantsPage() {
               <Field><FieldLabel>Full name</FieldLabel><Input placeholder="Resident full name" value={form.fullName} onChange={(event) => setForm((current) => ({ ...current, fullName: event.target.value ?? "" }))} /></Field>
               <Field><FieldLabel>Email</FieldLabel><Input type="email" placeholder="resident@email.com" value={form.email} onChange={(event) => setForm((current) => ({ ...current, email: event.target.value ?? "" }))} /></Field>
               <Field><FieldLabel>Phone</FieldLabel><Input placeholder="01XXXXXXXXX" value={form.phone} onChange={(event) => setForm((current) => ({ ...current, phone: event.target.value ?? "" }))} /></Field>
+              <UploadCollectionField label="Profile image" accept="image/*" kind="image" values={profileImages} onChange={(values) => setProfileImages(values.slice(-1))} />
               {form.tenantKind === "renter" ? (
                 <>
                   <Field><FieldLabel>Monthly rent</FieldLabel><Input type="number" placeholder="Monthly rent amount" value={form.monthlyRent} onChange={(event) => setForm((current) => ({ ...current, monthlyRent: event.target.value ?? "" }))} /></Field>
@@ -2139,6 +2202,9 @@ export function TenantOwnerTenantsPage() {
                           <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
                             <div className="space-y-3">
                               <div className="flex flex-wrap items-center gap-2">
+                                {tenant.profileImage ? (
+                                  <img src={tenant.profileImage} alt={tenant.fullName} className="size-10 rounded-full border object-cover" />
+                                ) : null}
                                 <p className="text-base font-semibold text-slate-950">{tenant.fullName}</p>
                                 <Badge variant="outline">{tenant.tenantKind ?? "resident"}</Badge>
                                 <Badge variant={tenant.isActive ? "default" : "secondary"}>{tenant.isActive ? "Active" : "Inactive"}</Badge>
@@ -2201,9 +2267,23 @@ export function TenantOwnerTenantsPage() {
                                 size="sm"
                                 variant="outline"
                                 className="gap-2 shadow-none"
+                                onClick={async () => {
+                                  await navigator.clipboard.writeText(buildPublicTenantUrl(tenant._id))
+                                  toast.success("Public QR link copied")
+                                }}
+                              >
+                                <QrCode className="size-4" />
+                                QR link
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                className="gap-2 shadow-none"
                                 onClick={() => {
                                   setSelectedTenantId(tenant._id)
                                   hydrateEditForm(tenant)
+                                  setEditProfileImages(tenant.profileImage ? [tenant.profileImage] : [])
                                   setIsEditOpen(true)
                                 }}
                               >
@@ -2274,9 +2354,63 @@ export function TenantOwnerTenantsPage() {
                         const tenantBills = billList.filter((bill) => bill.tenantId === selectedTenant._id)
                         const propertyName = propertyList.find((property) => property._id === selectedTenant.propertyId)?.name ?? "Unknown property"
                         const unitName = unitList.find((unit) => unit._id === selectedTenant.unitId)?.unitNumber ?? "No unit"
+                        const publicUrl = buildPublicTenantUrl(selectedTenant._id)
                         return (
                           <div className="space-y-4 px-4 pb-6">
                             <AuditStamp item={selectedTenant} />
+                            <div className="rounded-xl border bg-blue-50 p-4">
+                              <div className="flex flex-col gap-4 md:flex-row md:items-center">
+                                <div className="w-fit text-center">
+                                  <img
+                                    src={buildQrImageUrl(publicUrl)}
+                                    alt="Public payment and ticket QR"
+                                    className="size-36 rounded-xl border bg-white p-2"
+                                  />
+                                  <p className="mt-2 max-w-36 truncate text-sm font-medium text-slate-950">
+                                    {selectedTenant.fullName}
+                                  </p>
+                                </div>
+                                <div className="min-w-0 flex-1 space-y-3">
+                                  <div className="flex items-center gap-2">
+                                    <QrCode className="size-4 text-blue-700" />
+                                    <p className="font-medium text-slate-950">Public payment + ticket QR</p>
+                                  </div>
+                                  <p className="break-all rounded-lg bg-white p-3 text-xs text-slate-600">{publicUrl}</p>
+                                  <div className="flex flex-wrap gap-2">
+                                    <Button
+                                      type="button"
+                                      size="sm"
+                                      className="bg-blue-700 text-white hover:bg-blue-800"
+                                      onClick={async () => {
+                                        await navigator.clipboard.writeText(publicUrl)
+                                        toast.success("Public link copied")
+                                      }}
+                                    >
+                                      <Copy className="size-4" />
+                                      Copy link
+                                    </Button>
+                                    <Button type="button" size="sm" variant="outline" asChild>
+                                      <a href={publicUrl} target="_blank" rel="noreferrer">Open page</a>
+                                    </Button>
+                                    <Button
+                                      type="button"
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() => downloadQrCode(publicUrl, `${selectedTenant.fullName.replaceAll(" ", "-").toLowerCase()}-qr.png`, selectedTenant.fullName)}
+                                    >
+                                      <Download className="size-4" />
+                                      Download QR
+                                    </Button>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                            {selectedTenant.profileImage ? (
+                              <div className="rounded-xl border p-4">
+                                <p className="text-xs uppercase tracking-wide text-slate-500">Profile image</p>
+                                <img src={selectedTenant.profileImage} alt={selectedTenant.fullName} className="mt-3 size-28 rounded-full border object-cover" />
+                              </div>
+                            ) : null}
                             <div className="grid gap-3 md:grid-cols-2">
                               <div className="rounded-xl border p-4"><p className="text-xs uppercase tracking-wide text-slate-500">Name</p><p className="mt-1 font-medium text-slate-950">{selectedTenant.fullName}</p></div>
                               <div className="rounded-xl border p-4"><p className="text-xs uppercase tracking-wide text-slate-500">Type</p><p className="mt-1 font-medium text-slate-950">{selectedTenant.tenantKind ?? "resident"}</p></div>
@@ -2373,6 +2507,7 @@ export function TenantOwnerTenantsPage() {
                                   fullName: editForm.fullName,
                                   email: editForm.email,
                                   phone: editForm.phone,
+                                  profileImage: editProfileImages[0] || editForm.profileImage || undefined,
                                   monthlyRent: editForm.tenantKind === "renter" ? Number(editForm.monthlyRent || "0") || undefined : undefined,
                                   rentDueDay: editForm.tenantKind === "renter" ? Number(editForm.rentDueDay || "0") || undefined : undefined,
                                   oneTimeGuestFee: editForm.tenantKind === "guest" ? Number(editForm.oneTimeGuestFee || "0") || undefined : undefined,
@@ -2400,6 +2535,7 @@ export function TenantOwnerTenantsPage() {
                             <Field><FieldLabel>Full name</FieldLabel><Input value={editForm.fullName} onChange={(event) => setEditForm((current) => ({ ...current, fullName: event.target.value ?? "" }))} /></Field>
                             <Field><FieldLabel>Email</FieldLabel><Input type="email" value={editForm.email} onChange={(event) => setEditForm((current) => ({ ...current, email: event.target.value ?? "" }))} /></Field>
                             <Field><FieldLabel>Phone</FieldLabel><Input value={editForm.phone} onChange={(event) => setEditForm((current) => ({ ...current, phone: event.target.value ?? "" }))} /></Field>
+                            <UploadCollectionField label="Profile image" accept="image/*" kind="image" values={editProfileImages} onChange={(values) => setEditProfileImages(values.slice(-1))} />
                             {editForm.tenantKind === "renter" ? (
                               <>
                                 <Field><FieldLabel>Monthly rent</FieldLabel><Input type="number" value={editForm.monthlyRent} onChange={(event) => setEditForm((current) => ({ ...current, monthlyRent: event.target.value ?? "" }))} /></Field>
@@ -2876,6 +3012,170 @@ export function TenantOwnerHealthPage() {
           </CardContent>
         </Card>
       </WithBone>
+    </div>
+  )
+}
+
+export function TenantOwnerStaffPage() {
+  const properties = useOwnerPropertiesQuery()
+  const [search, setSearch] = useState("")
+  const [propertyFilter, setPropertyFilter] = useState("all")
+  const staff = useOwnerStaffQuery({ search, propertyId: propertyFilter === "all" ? undefined : propertyFilter })
+  const createStaff = useOwnerCreateStaffMutation()
+  const updateStaff = useOwnerUpdateStaffMutation()
+  const payStaff = useOwnerPayStaffMutation()
+  const sendMessage = useOwnerSendStaffMessageMutation()
+  const propertyList = Array.isArray(properties.data) ? properties.data : []
+  const staffList = Array.isArray(staff.data) ? staff.data : []
+  const propertyMap = new Map(propertyList.map((item) => [item._id, item]))
+  const [isCreateOpen, setIsCreateOpen] = useState(false)
+  const [staffImages, setStaffImages] = useState<string[]>([])
+  const [form, setForm] = useState({
+    propertyId: "",
+    fullName: "",
+    email: "",
+    phone: "",
+    role: "caretaker",
+    workDescription: "",
+    workStart: "",
+    workEnd: "",
+    monthlyPay: "",
+    currency: "usd",
+  })
+  const [payForm, setPayForm] = useState({ staffId: "", monthKey: new Date().toISOString().slice(0, 7), amount: "", note: "" })
+  const [messageForm, setMessageForm] = useState({ staffId: "", subject: "", body: "", email: true, sms: false })
+
+  return (
+    <div className="space-y-6">
+      <OwnerPageHero
+        icon={Users}
+        badge="People"
+        title="Staff"
+        body="Property staff records, role, work dates, monthly pay, salary expense, and direct messages."
+      />
+      <div className="flex justify-end">
+        <CreateSheet open={isCreateOpen} onOpenChange={setIsCreateOpen} title="Add staff" description="Create property staff profile." triggerLabel="Add staff">
+          <form
+            className="space-y-4"
+            onSubmit={(event) => {
+              event.preventDefault()
+              createStaff.mutate({
+                propertyId: form.propertyId,
+                fullName: form.fullName,
+                email: form.email || undefined,
+                phone: form.phone || undefined,
+                role: form.role,
+                image: staffImages[0],
+                workDescription: form.workDescription || undefined,
+                workStart: form.workStart || undefined,
+                workEnd: form.workEnd || undefined,
+                monthlyPay: Number(form.monthlyPay || "0"),
+                currency: form.currency,
+                status: "active",
+              }, {
+                onSuccess: () => {
+                  setForm({ propertyId: "", fullName: "", email: "", phone: "", role: "caretaker", workDescription: "", workStart: "", workEnd: "", monthlyPay: "", currency: "usd" })
+                  setStaffImages([])
+                  setIsCreateOpen(false)
+                },
+              })
+            }}
+          >
+            <FieldGroup>
+              <Field><FieldLabel>Property</FieldLabel><Select value={form.propertyId} onValueChange={(value) => setForm((current) => ({ ...current, propertyId: value ?? "" }))}><SelectTrigger className="w-full"><SelectValue placeholder="Select property" /></SelectTrigger><SelectContent><SelectGroup>{propertyList.map((property) => <SelectItem key={property._id} value={property._id}>{property.name}</SelectItem>)}</SelectGroup></SelectContent></Select></Field>
+              <Field><FieldLabel>Name</FieldLabel><Input value={form.fullName} onChange={(event) => setForm((current) => ({ ...current, fullName: event.target.value }))} /></Field>
+              <div className="grid gap-3 md:grid-cols-2">
+                <Field><FieldLabel>Email</FieldLabel><Input type="email" value={form.email} onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))} /></Field>
+                <Field><FieldLabel>Phone</FieldLabel><Input value={form.phone} onChange={(event) => setForm((current) => ({ ...current, phone: event.target.value }))} /></Field>
+              </div>
+              <div className="grid gap-3 md:grid-cols-2">
+                <Field><FieldLabel>Role</FieldLabel><Input placeholder="caretaker, guard, cleaner" value={form.role} onChange={(event) => setForm((current) => ({ ...current, role: event.target.value }))} /></Field>
+                <Field><FieldLabel>Monthly pay</FieldLabel><Input type="number" value={form.monthlyPay} onChange={(event) => setForm((current) => ({ ...current, monthlyPay: event.target.value }))} /></Field>
+              </div>
+              <div className="grid gap-3 md:grid-cols-3">
+                <Field><FieldLabel>Currency</FieldLabel><Select value={form.currency} onValueChange={(value) => setForm((current) => ({ ...current, currency: value ?? "usd" }))}><SelectTrigger className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectGroup>{STRIPE_CURRENCY_OPTIONS.map((item) => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}</SelectGroup></SelectContent></Select></Field>
+                <Field><FieldLabel>Work start</FieldLabel><Input type="date" value={form.workStart} onChange={(event) => setForm((current) => ({ ...current, workStart: event.target.value }))} /></Field>
+                <Field><FieldLabel>Work end</FieldLabel><Input type="date" value={form.workEnd} onChange={(event) => setForm((current) => ({ ...current, workEnd: event.target.value }))} /></Field>
+              </div>
+              <Field><FieldLabel>Work description</FieldLabel><Textarea value={form.workDescription} onChange={(event) => setForm((current) => ({ ...current, workDescription: event.target.value }))} /></Field>
+              <UploadCollectionField label="Staff image" accept="image/*" kind="image" values={staffImages} onChange={(values) => setStaffImages(values.slice(-1))} />
+            </FieldGroup>
+            <Button type="submit" disabled={createStaff.isPending || !form.propertyId || !form.fullName || !form.role}>Save staff</Button>
+          </form>
+        </CreateSheet>
+      </div>
+
+      <Card className="shadow-none">
+        <CardHeader>
+          <CardTitle>Staff list</CardTitle>
+          <CardDescription>Paying a staff month creates expense row in Finance.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-3 md:grid-cols-2">
+            <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search staff, role, phone" />
+            <Select value={propertyFilter} onValueChange={(value) => setPropertyFilter(value ?? "all")}>
+              <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+              <SelectContent><SelectGroup><SelectItem value="all">All properties</SelectItem>{propertyList.map((property) => <SelectItem key={property._id} value={property._id}>{property.name}</SelectItem>)}</SelectGroup></SelectContent>
+            </Select>
+          </div>
+
+          <WithBone name="owner-staff" loading={staff.isLoading} fallback={<DashboardTableSkeleton />}>
+            <div className="grid gap-4 xl:grid-cols-2">
+              {staffList.length ? staffList.map((item) => {
+                const paidMonths = item.paymentRecords?.filter((record) => record.status === "paid").map((record) => record.monthKey) ?? []
+                return (
+                  <div key={item._id} className="rounded-xl border bg-white p-4">
+                    <div className="flex gap-4">
+                      <div className="size-16 shrink-0 overflow-hidden rounded-xl bg-slate-100">
+                        {item.image ? <img src={item.image} alt={item.fullName} className="size-full object-cover" /> : <div className="flex size-full items-center justify-center text-sm font-semibold text-slate-500">{item.fullName.slice(0, 1)}</div>}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="font-medium text-slate-950">{item.fullName}</p>
+                          <Badge>{item.role}</Badge>
+                          <Badge variant="outline">{item.status}</Badge>
+                        </div>
+                        <p className="mt-1 text-sm text-slate-600">{propertyMap.get(item.propertyId)?.name ?? "Property"}</p>
+                        <p className="mt-1 text-xs text-slate-500">{item.email ?? "No email"} - {item.phone ?? "No phone"}</p>
+                      </div>
+                    </div>
+                    <div className="mt-4 grid gap-3 rounded-xl bg-slate-50 p-3 text-sm md:grid-cols-3">
+                      <div><p className="text-xs uppercase tracking-wide text-slate-500">Monthly pay</p><p className="font-medium text-slate-950">{formatMoney(item.monthlyPay ?? 0, (item.currency ?? "USD").toUpperCase())}</p></div>
+                      <div><p className="text-xs uppercase tracking-wide text-slate-500">Start</p><p className="font-medium text-slate-950">{item.workStart ? new Date(item.workStart).toLocaleDateString() : "No date"}</p></div>
+                      <div><p className="text-xs uppercase tracking-wide text-slate-500">Paid months</p><p className="font-medium text-slate-950">{paidMonths.length ? paidMonths.slice(-3).join(", ") : "None"}</p></div>
+                    </div>
+                    {item.workDescription ? <p className="mt-3 text-sm text-slate-600">{item.workDescription}</p> : null}
+
+                    <div className="mt-4 grid gap-3 lg:grid-cols-2">
+                      <div className="space-y-2 rounded-xl border p-3">
+                        <p className="text-sm font-medium text-slate-950">Record salary</p>
+                        <Input type="month" value={payForm.staffId === item._id ? payForm.monthKey : new Date().toISOString().slice(0, 7)} onChange={(event) => setPayForm((current) => ({ ...current, staffId: item._id, monthKey: event.target.value }))} />
+                        <Input type="number" placeholder={`${item.monthlyPay ?? 0}`} value={payForm.staffId === item._id ? payForm.amount : ""} onChange={(event) => setPayForm((current) => ({ ...current, staffId: item._id, amount: event.target.value }))} />
+                        <Button type="button" className="w-full" disabled={payStaff.isPending} onClick={() => payStaff.mutate({ id: item._id, payload: { monthKey: payForm.staffId === item._id ? payForm.monthKey : new Date().toISOString().slice(0, 7), amount: payForm.amount ? Number(payForm.amount) : undefined, currency: item.currency ?? undefined, note: payForm.note || undefined } })}>Mark paid</Button>
+                      </div>
+                      <div className="space-y-2 rounded-xl border p-3">
+                        <p className="text-sm font-medium text-slate-950">Send message</p>
+                        <Input placeholder="Subject" value={messageForm.staffId === item._id ? messageForm.subject : ""} onChange={(event) => setMessageForm((current) => ({ ...current, staffId: item._id, subject: event.target.value }))} />
+                        <Textarea placeholder="Message" value={messageForm.staffId === item._id ? messageForm.body : ""} onChange={(event) => setMessageForm((current) => ({ ...current, staffId: item._id, body: event.target.value }))} />
+                        <div className="flex gap-3 text-sm">
+                          <label className="flex items-center gap-2"><Checkbox checked={messageForm.staffId === item._id ? messageForm.email : true} onCheckedChange={(checked) => setMessageForm((current) => ({ ...current, staffId: item._id, email: Boolean(checked) }))} />Email</label>
+                          <label className="flex items-center gap-2"><Checkbox checked={messageForm.staffId === item._id ? messageForm.sms : false} onCheckedChange={(checked) => setMessageForm((current) => ({ ...current, staffId: item._id, sms: Boolean(checked) }))} />SMS</label>
+                        </div>
+                        <Button type="button" variant="outline" className="w-full" disabled={sendMessage.isPending || (messageForm.staffId === item._id && !messageForm.body)} onClick={() => sendMessage.mutate({ id: item._id, payload: { subject: messageForm.subject || undefined, body: messageForm.body, channels: [messageForm.email ? "email" : "", messageForm.sms ? "sms" : ""].filter(Boolean) as Array<"email" | "sms"> } }, { onSuccess: () => setMessageForm({ staffId: "", subject: "", body: "", email: true, sms: false }) })}>Send</Button>
+                      </div>
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {["active", "on_leave", "inactive"].map((status) => <Button key={status} type="button" size="sm" variant={item.status === status ? "default" : "outline"} onClick={() => updateStaff.mutate({ id: item._id, payload: { status: status as "active" | "on_leave" | "inactive", isActive: status !== "inactive" } })}>{status}</Button>)}
+                    </div>
+                  </div>
+                )
+              }) : (
+                <Empty className="xl:col-span-2"><EmptyHeader><EmptyMedia variant="icon"><Users /></EmptyMedia><EmptyTitle>No staff yet</EmptyTitle><EmptyDescription>Add guard, cleaner, caretaker, manager, or other property staff.</EmptyDescription></EmptyHeader></Empty>
+              )}
+            </div>
+          </WithBone>
+        </CardContent>
+      </Card>
     </div>
   )
 }
@@ -4334,29 +4634,42 @@ export function TenantOwnerVendorQuotesPage() {
   const properties = useOwnerPropertiesQuery({ limit: 500 })
   const units = useOwnerUnitsQuery({ limit: 1000 })
   const quotes = useOwnerVendorQuotesQuery({ limit: 500 })
-  const createQuote = useOwnerCreateVendorQuoteMutation()
+  const quoteRequests = useOwnerVendorQuoteRequestsQuery()
+  const notificationSettings = useOwnerNotificationSettingsQuery()
+  const createQuoteRequest = useOwnerCreateVendorQuoteRequestMutation()
   const updateQuote = useOwnerUpdateVendorQuoteMutation()
+  const selectSubmission = useOwnerSelectVendorQuoteSubmissionMutation()
   const vendorList = Array.isArray(vendors.data) ? vendors.data : []
   const propertyList = Array.isArray(properties.data) ? properties.data : []
   const unitList = Array.isArray(units.data) ? units.data : []
   const quoteList = Array.isArray(quotes.data) ? quotes.data : []
-  const [isCreateOpen, setIsCreateOpen] = useState(false)
-  const [quoteFiles, setQuoteFiles] = useState<string[]>([])
-  const [form, setForm] = useState({
-    vendorId: "",
+  const requestList = Array.isArray(quoteRequests.data) ? quoteRequests.data : []
+  const [isRequestOpen, setIsRequestOpen] = useState(false)
+  const [requestFiles, setRequestFiles] = useState<string[]>([])
+  const [requestForm, setRequestForm] = useState({
     propertyId: "",
     unitId: "",
     title: "",
     description: "",
-    amount: "",
+    budgetAmount: "",
     currency: "USD",
-    status: "requested",
-    ownerNote: "",
+    dueDate: "",
+    winnerMessageTemplate: "Hi {{vendor_name}}, your quote for {{request_title}} was selected. Amount: {{amount}} {{currency}}. Owner will contact you soon.",
+    rejectionMessageTemplate: "Hi {{vendor_name}}, thank you for quoting {{request_title}}. Owner selected another vendor this time.",
   })
   const approvedValue = quoteList
     .filter((quote) => quote.status === "approved")
     .reduce((sum, quote) => sum + (quote.amount ?? 0), 0)
   const pendingCount = quoteList.filter((quote) => ["requested", "submitted"].includes(quote.status)).length
+
+  useEffect(() => {
+    if (!notificationSettings.data) return
+    setRequestForm((current) => ({
+      ...current,
+      winnerMessageTemplate: notificationSettings.data?.vendorQuoteWinnerMessageTemplate ?? current.winnerMessageTemplate,
+      rejectionMessageTemplate: notificationSettings.data?.vendorQuoteRejectionMessageTemplate ?? current.rejectionMessageTemplate,
+    }))
+  }, [notificationSettings.data])
 
   return (
     <div className="space-y-6">
@@ -4367,10 +4680,11 @@ export function TenantOwnerVendorQuotesPage() {
         body="Request vendor quotes, compare submitted prices, approve work, and keep quote files tied to property records."
       />
 
-      <div className="grid gap-3 md:grid-cols-3">
+      <div className="grid gap-3 md:grid-cols-4">
         {[
-          ["Quotes", quoteList.length, "All requested, submitted, approved, and rejected vendor quotes."],
+          ["Quotes", quoteList.length + requestList.reduce((sum, item) => sum + (item.submissions?.length ?? 0), 0), "Manual quotes plus public marketplace submissions."],
           ["Pending", pendingCount, "Quotes waiting for submission or owner decision."],
+          ["Public requests", requestList.length, "Shareable links and QR codes vendors can submit into."],
           ["Approved value", formatMoney(approvedValue), "Total approved vendor quote amount."],
         ].map(([label, value, help]) => (
           <Card key={label} className="shadow-none">
@@ -4385,67 +4699,145 @@ export function TenantOwnerVendorQuotesPage() {
         ))}
       </div>
 
-      <div className="flex justify-end">
-        <CreateSheet open={isCreateOpen} onOpenChange={setIsCreateOpen} title="Request vendor quote" description="Create a quote request or record a submitted vendor price." triggerLabel="Add quote">
+      <div className="flex flex-wrap justify-end gap-2">
+        <CreateSheet open={isRequestOpen} onOpenChange={setIsRequestOpen} title="Send quotation request" description="Share this by link or QR so any vendor can submit price, timeline, and payment terms." triggerLabel="Send quotation">
           <form
             className="space-y-4"
             onSubmit={(event) => {
               event.preventDefault()
-              createQuote.mutate({
-                vendorId: form.vendorId,
-                propertyId: form.propertyId,
-                unitId: form.unitId || undefined,
-                title: form.title,
-                description: form.description || undefined,
-                amount: Number(form.amount || "0") || undefined,
-                currency: form.currency || undefined,
-                status: form.status as "requested" | "submitted" | "approved" | "rejected",
-                attachments: quoteFiles,
-                ownerNote: form.ownerNote || undefined,
+              createQuoteRequest.mutate({
+                propertyId: requestForm.propertyId,
+                unitId: requestForm.unitId || undefined,
+                title: requestForm.title,
+                description: requestForm.description || undefined,
+                budgetAmount: Number(requestForm.budgetAmount || "0") || undefined,
+                currency: requestForm.currency || undefined,
+                dueDate: requestForm.dueDate || undefined,
+                attachments: requestFiles,
+                winnerMessageTemplate: requestForm.winnerMessageTemplate,
+                rejectionMessageTemplate: requestForm.rejectionMessageTemplate,
               }, {
                 onSuccess: () => {
-                  setForm({ vendorId: "", propertyId: "", unitId: "", title: "", description: "", amount: "", currency: "USD", status: "requested", ownerNote: "" })
-                  setQuoteFiles([])
-                  setIsCreateOpen(false)
+                  setRequestForm({
+                    propertyId: "",
+                    unitId: "",
+                    title: "",
+                    description: "",
+                    budgetAmount: "",
+                    currency: "USD",
+                    dueDate: "",
+                    winnerMessageTemplate: notificationSettings.data?.vendorQuoteWinnerMessageTemplate ?? "Hi {{vendor_name}}, your quote for {{request_title}} was selected. Amount: {{amount}} {{currency}}. Owner will contact you soon.",
+                    rejectionMessageTemplate: notificationSettings.data?.vendorQuoteRejectionMessageTemplate ?? "Hi {{vendor_name}}, thank you for quoting {{request_title}}. Owner selected another vendor this time.",
+                  })
+                  setRequestFiles([])
+                  setIsRequestOpen(false)
                 },
               })
             }}
           >
             <FieldGroup>
               <Field>
-                <div className="flex items-center gap-2">
-                  <FieldLabel>Vendor</FieldLabel>
-                  <HelpMark label="Pick vendor who should price or perform the work." />
-                </div>
-                <Select value={form.vendorId} onValueChange={(value) => setForm((current) => ({ ...current, vendorId: value ?? "" }))}>
-                  <SelectTrigger className="w-full"><SelectValue placeholder="Select vendor" /></SelectTrigger>
-                  <SelectContent><SelectGroup>{vendorList.map((vendor) => <SelectItem key={vendor._id} value={vendor._id}>{vendor.name}</SelectItem>)}</SelectGroup></SelectContent>
-                </Select>
-              </Field>
-              <Field>
                 <FieldLabel>Property</FieldLabel>
-                <Select value={form.propertyId} onValueChange={(value) => setForm((current) => ({ ...current, propertyId: value ?? "", unitId: "" }))}>
+                <Select value={requestForm.propertyId} onValueChange={(value) => setRequestForm((current) => ({ ...current, propertyId: value ?? "", unitId: "" }))}>
                   <SelectTrigger className="w-full"><SelectValue placeholder="Select property" /></SelectTrigger>
                   <SelectContent><SelectGroup>{propertyList.map((property) => <SelectItem key={property._id} value={property._id}>{property.name}</SelectItem>)}</SelectGroup></SelectContent>
                 </Select>
               </Field>
-              <Field><FieldLabel>Unit optional</FieldLabel><Select value={form.unitId || "__none__"} onValueChange={(value) => setForm((current) => ({ ...current, unitId: value === "__none__" ? "" : (value ?? "") }))}><SelectTrigger className="w-full"><SelectValue placeholder="Whole property" /></SelectTrigger><SelectContent><SelectGroup><SelectItem value="__none__">Whole property</SelectItem>{unitList.filter((unit) => !form.propertyId || unit.propertyId === form.propertyId).map((unit) => <SelectItem key={unit._id} value={unit._id}>{unit.unitNumber}</SelectItem>)}</SelectGroup></SelectContent></Select></Field>
-              <Field><FieldLabel>Title</FieldLabel><Input value={form.title} onChange={(event) => setForm((current) => ({ ...current, title: event.target.value ?? "" }))} /></Field>
-              <Field><FieldLabel>Description</FieldLabel><Textarea value={form.description} onChange={(event) => setForm((current) => ({ ...current, description: event.target.value ?? "" }))} /></Field>
+              <Field><FieldLabel>Unit optional</FieldLabel><Select value={requestForm.unitId || "__none__"} onValueChange={(value) => setRequestForm((current) => ({ ...current, unitId: value === "__none__" ? "" : (value ?? "") }))}><SelectTrigger className="w-full"><SelectValue placeholder="Whole property" /></SelectTrigger><SelectContent><SelectGroup><SelectItem value="__none__">Whole property</SelectItem>{unitList.filter((unit) => !requestForm.propertyId || unit.propertyId === requestForm.propertyId).map((unit) => <SelectItem key={unit._id} value={unit._id}>{unit.unitNumber}</SelectItem>)}</SelectGroup></SelectContent></Select></Field>
+              <Field><FieldLabel>Title</FieldLabel><Input value={requestForm.title} onChange={(event) => setRequestForm((current) => ({ ...current, title: event.target.value ?? "" }))} /></Field>
+              <Field><FieldLabel>Description</FieldLabel><Textarea value={requestForm.description} onChange={(event) => setRequestForm((current) => ({ ...current, description: event.target.value ?? "" }))} /></Field>
               <div className="grid gap-3 md:grid-cols-3">
-                <Field><FieldLabel>Amount</FieldLabel><Input type="number" value={form.amount} onChange={(event) => setForm((current) => ({ ...current, amount: event.target.value ?? "" }))} /></Field>
-                <Field><FieldLabel>Currency</FieldLabel><Input value={form.currency} onChange={(event) => setForm((current) => ({ ...current, currency: event.target.value ?? "USD" }))} /></Field>
-                <Field><FieldLabel>Status</FieldLabel><Select value={form.status} onValueChange={(value) => setForm((current) => ({ ...current, status: value ?? "requested" }))}><SelectTrigger className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectGroup>{["requested", "submitted", "approved", "rejected"].map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}</SelectGroup></SelectContent></Select></Field>
+                <Field><FieldLabel>Budget</FieldLabel><Input type="number" value={requestForm.budgetAmount} onChange={(event) => setRequestForm((current) => ({ ...current, budgetAmount: event.target.value ?? "" }))} /></Field>
+                <Field><FieldLabel>Currency</FieldLabel><Select value={requestForm.currency.toLowerCase()} onValueChange={(value) => setRequestForm((current) => ({ ...current, currency: (value ?? "usd").toUpperCase() }))}><SelectTrigger className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectGroup>{STRIPE_CURRENCY_OPTIONS.map((item) => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}</SelectGroup></SelectContent></Select></Field>
+                <Field><FieldLabel>Due date</FieldLabel><Input type="date" value={requestForm.dueDate} onChange={(event) => setRequestForm((current) => ({ ...current, dueDate: event.target.value ?? "" }))} /></Field>
               </div>
-              <UploadCollectionField label="Quote files" accept=".pdf,.doc,.docx,.xls,.xlsx,image/*" kind="file" values={quoteFiles} onChange={setQuoteFiles} />
-              <Field><FieldLabel>Owner note</FieldLabel><Textarea value={form.ownerNote} onChange={(event) => setForm((current) => ({ ...current, ownerNote: event.target.value ?? "" }))} /></Field>
+              <UploadCollectionField label="Request files" accept=".pdf,.doc,.docx,.xls,.xlsx,image/*" kind="file" values={requestFiles} onChange={setRequestFiles} />
+              <Field><FieldLabel>Selected vendor message</FieldLabel><Textarea value={requestForm.winnerMessageTemplate} onChange={(event) => setRequestForm((current) => ({ ...current, winnerMessageTemplate: event.target.value ?? "" }))} /><FieldDescription>Variables: {"{{vendor_name}}"}, {"{{request_title}}"}, {"{{amount}}"}, {"{{currency}}"}</FieldDescription></Field>
+              <Field><FieldLabel>Other vendors message</FieldLabel><Textarea value={requestForm.rejectionMessageTemplate} onChange={(event) => setRequestForm((current) => ({ ...current, rejectionMessageTemplate: event.target.value ?? "" }))} /></Field>
             </FieldGroup>
-            <Button type="submit" disabled={createQuote.isPending || !form.vendorId || !form.propertyId || !form.title}>Save quote</Button>
+            <Button type="submit" disabled={createQuoteRequest.isPending || !requestForm.propertyId || !requestForm.title}>Create sendable quotation</Button>
           </form>
         </CreateSheet>
       </div>
 
-      <WithBone name="owner-page-vendor-quotes" loading={quotes.isLoading || vendors.isLoading || properties.isLoading} fallback={<DashboardTableSkeleton />}>
+      <WithBone name="owner-page-vendor-quotes" loading={quotes.isLoading || quoteRequests.isLoading || vendors.isLoading || properties.isLoading} fallback={<DashboardTableSkeleton />}>
+        <Card className="shadow-none">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">Public marketplace requests <HelpMark label="Copy link or scan QR. Vendors submit proposals without account." /></CardTitle>
+            <CardDescription>Share request, collect vendor prices, then select one vendor. Selected and rejected messages send automatically.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {requestList.length ? requestList.map((request) => {
+              const property = propertyList.find((item) => item._id === request.propertyId)
+              const unit = unitList.find((item) => item._id === request.unitId)
+              const publicUrl = `${typeof window !== "undefined" ? window.location.origin : ""}/public/vendor-quote/${request._id}`
+              return (
+                <div key={request._id} className="rounded-xl border p-4">
+                  <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                    <div className="space-y-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="font-medium text-slate-950">{request.title}</p>
+                        <Badge variant={request.status === "awarded" ? "default" : "outline"}>{request.status}</Badge>
+                        <Badge variant="secondary">{request.submissions?.length ?? 0} submissions</Badge>
+                      </div>
+                      <p className="text-sm text-slate-600">{property?.name ?? "Unknown property"} {unit ? `- ${unit.unitNumber}` : ""}</p>
+                      <p className="text-sm text-slate-600">{request.description ?? "No description"}</p>
+                      <p className="text-sm font-medium text-slate-950">Budget {formatMoney(request.budgetAmount ?? 0, request.currency)}</p>
+                      <div className="flex flex-wrap gap-2">
+                        <Button type="button" size="sm" variant="outline" onClick={async () => {
+                          await navigator.clipboard.writeText(publicUrl)
+                          toast.success("Vendor link copied")
+                        }}>
+                          <Copy className="size-4" />
+                          Copy link
+                        </Button>
+                        <Button type="button" size="sm" variant="outline" asChild><a href={publicUrl} target="_blank" rel="noreferrer">Open form</a></Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => downloadQrCode(publicUrl, `${request.title.replaceAll(" ", "-").toLowerCase()}-vendor-qr.png`)}
+                        >
+                          <Download className="size-4" />
+                          Download QR
+                        </Button>
+                      </div>
+                    </div>
+                    <img src={buildQrImageUrl(publicUrl)} alt="Vendor quote QR" className="size-32 rounded-xl border bg-white p-2" />
+                  </div>
+                  {request.submissions?.length ? (
+                    <div className="mt-4 grid gap-3">
+                      {request.submissions.map((submission) => (
+                        <div key={submission._id} className="rounded-xl border bg-slate-50 p-3">
+                          <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div>
+                              <p className="font-medium text-slate-950">{submission.vendorName}</p>
+                              <p className="text-sm text-slate-600">{submission.vendorEmail} {submission.vendorPhone ? `- ${submission.vendorPhone}` : ""}</p>
+                            </div>
+                            <Badge variant={submission.status === "selected" ? "default" : submission.status === "rejected" ? "destructive" : "outline"}>{submission.status}</Badge>
+                          </div>
+                          <div className="mt-3 grid gap-3 text-sm md:grid-cols-4">
+                            <div><p className="text-xs uppercase tracking-wide text-slate-500">Amount</p><p className="font-medium text-slate-950">{formatMoney(submission.amount, submission.currency)}</p></div>
+                            <div><p className="text-xs uppercase tracking-wide text-slate-500">Timeline</p><p className="font-medium text-slate-950">{submission.timeline ?? "Not set"}</p></div>
+                            <div><p className="text-xs uppercase tracking-wide text-slate-500">Payment</p><p className="font-medium text-slate-950">{submission.paymentTerms ?? "Not set"}</p></div>
+                            <div><p className="text-xs uppercase tracking-wide text-slate-500">Files</p><p className="font-medium text-slate-950">{submission.attachments?.length ?? 0}</p></div>
+                          </div>
+                          <p className="mt-3 text-sm text-slate-700">{submission.proposalNote ?? "No proposal note"}</p>
+                          <div className="mt-3">
+                            <Button type="button" size="sm" disabled={request.status === "awarded" || selectSubmission.isPending} onClick={() => selectSubmission.mutate({ requestId: request._id, submissionId: submission._id })}>Select vendor</Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              )
+            }) : (
+              <div className="rounded-xl border border-dashed p-4 text-sm text-slate-500">No public vendor request yet.</div>
+            )}
+          </CardContent>
+        </Card>
+
         <Card className="shadow-none">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">Quote approvals <HelpMark label="Approve quote when owner accepts price. Reject keeps history without deleting quote." /></CardTitle>
@@ -4522,6 +4914,7 @@ export function TenantOwnerNotificationsPage() {
     overdueRentEnabled: false,
     overdueRentDaysAfterDue: "1",
     overdueRentRepeatEveryDays: "3",
+    overdueRentMaxSends: "3",
     overdueRentChannels: ["email"] as Array<"email" | "sms">,
     overdueRentTemplateId: "",
     inspectionEnabled: false,
@@ -4536,6 +4929,8 @@ export function TenantOwnerNotificationsPage() {
     workerCreatedTemplateId: "",
     noticeCreatedChannels: [] as Array<"email" | "sms">,
     noticeCreatedTemplateId: "",
+    vendorQuoteWinnerMessageTemplate: "Hi {{vendor_name}}, your quote for {{request_title}} was selected. Amount: {{amount}} {{currency}}. Owner will contact you soon.",
+    vendorQuoteRejectionMessageTemplate: "Hi {{vendor_name}}, thank you for quoting {{request_title}}. Owner selected another vendor this time.",
   })
 
   useEffect(() => {
@@ -4545,6 +4940,7 @@ export function TenantOwnerNotificationsPage() {
       overdueRentEnabled: data.overdueRentEnabled,
       overdueRentDaysAfterDue: String(data.overdueRentDaysAfterDue ?? 1),
       overdueRentRepeatEveryDays: String(data.overdueRentRepeatEveryDays ?? 3),
+      overdueRentMaxSends: String(data.overdueRentMaxSends ?? 3),
       overdueRentChannels: data.overdueRentChannels?.length ? data.overdueRentChannels : ["email"],
       overdueRentTemplateId: data.overdueRentTemplateId ?? "",
       inspectionEnabled: Boolean(data.inspectionEnabled),
@@ -4559,6 +4955,8 @@ export function TenantOwnerNotificationsPage() {
       workerCreatedTemplateId: data.workerCreatedTemplateId ?? "",
       noticeCreatedChannels: data.noticeCreatedChannels ?? [],
       noticeCreatedTemplateId: data.noticeCreatedTemplateId ?? "",
+      vendorQuoteWinnerMessageTemplate: data.vendorQuoteWinnerMessageTemplate ?? "Hi {{vendor_name}}, your quote for {{request_title}} was selected. Amount: {{amount}} {{currency}}. Owner will contact you soon.",
+      vendorQuoteRejectionMessageTemplate: data.vendorQuoteRejectionMessageTemplate ?? "Hi {{vendor_name}}, thank you for quoting {{request_title}}. Owner selected another vendor this time.",
     })
   }, [settings.data])
 
@@ -4591,6 +4989,7 @@ export function TenantOwnerNotificationsPage() {
                   overdueRentEnabled: settingsForm.overdueRentEnabled,
                   overdueRentDaysAfterDue: Number(settingsForm.overdueRentDaysAfterDue || "1"),
                   overdueRentRepeatEveryDays: Number(settingsForm.overdueRentRepeatEveryDays || "3"),
+                  overdueRentMaxSends: Number(settingsForm.overdueRentMaxSends || "3"),
                   overdueRentChannels: settingsForm.overdueRentChannels,
                   overdueRentTemplateId: settingsForm.overdueRentTemplateId || undefined,
                   inspectionEnabled: settingsForm.inspectionEnabled,
@@ -4605,19 +5004,22 @@ export function TenantOwnerNotificationsPage() {
                   workerCreatedTemplateId: settingsForm.workerCreatedTemplateId || undefined,
                   noticeCreatedChannels: settingsForm.noticeCreatedChannels,
                   noticeCreatedTemplateId: settingsForm.noticeCreatedTemplateId || undefined,
+                  vendorQuoteWinnerMessageTemplate: settingsForm.vendorQuoteWinnerMessageTemplate,
+                  vendorQuoteRejectionMessageTemplate: settingsForm.vendorQuoteRejectionMessageTemplate,
                 })
               }}
             >
               <div className="flex items-center justify-between rounded-xl border p-3">
                 <div className="flex items-center gap-2">
-                  <p className="text-sm font-medium text-slate-950">Overdue rent reminder</p>
-                  <HelpMark label="If rent bill is unpaid after due date plus grace days, tenant gets selected channels." />
+                  <p className="text-sm font-medium text-slate-950">Rent reminder automation</p>
+                  <HelpMark label="Starts after chosen days, repeats with chosen gap, stops when paid, and never exceeds max sends." />
                 </div>
                 <Switch checked={settingsForm.overdueRentEnabled} onCheckedChange={(value) => setSettingsForm((current) => ({ ...current, overdueRentEnabled: value }))} />
               </div>
               <div className="grid gap-3 md:grid-cols-2">
-                <Field><FieldLabel>Grace days</FieldLabel><Input type="number" min={0} value={settingsForm.overdueRentDaysAfterDue} onChange={(event) => setSettingsForm((current) => ({ ...current, overdueRentDaysAfterDue: event.target.value ?? "1" }))} /></Field>
-                <Field><FieldLabel>Repeat every days</FieldLabel><Input type="number" min={1} value={settingsForm.overdueRentRepeatEveryDays} onChange={(event) => setSettingsForm((current) => ({ ...current, overdueRentRepeatEveryDays: event.target.value ?? "3" }))} /></Field>
+                <Field><FieldLabel>Start after due date</FieldLabel><Input type="number" min={0} value={settingsForm.overdueRentDaysAfterDue} onChange={(event) => setSettingsForm((current) => ({ ...current, overdueRentDaysAfterDue: event.target.value ?? "1" }))} /><FieldDescription>Days after unpaid bill due date.</FieldDescription></Field>
+                <Field><FieldLabel>Days between reminders</FieldLabel><Input type="number" min={1} value={settingsForm.overdueRentRepeatEveryDays} onChange={(event) => setSettingsForm((current) => ({ ...current, overdueRentRepeatEveryDays: event.target.value ?? "3" }))} /></Field>
+                <Field><FieldLabel>Max reminders</FieldLabel><Select value={settingsForm.overdueRentMaxSends} onValueChange={(value) => setSettingsForm((current) => ({ ...current, overdueRentMaxSends: value ?? "3" }))}><SelectTrigger className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectGroup>{["1", "2", "3", "4", "5", "6"].map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}</SelectGroup></SelectContent></Select></Field>
               </div>
               <Field>
                 <FieldLabel>Overdue template</FieldLabel>
@@ -4717,7 +5119,24 @@ export function TenantOwnerNotificationsPage() {
                   </div>
                 )
               })}
-              <Button type="submit" disabled={saveSettings.isPending}>Save notification rules</Button>
+              <div className="rounded-xl border p-3">
+                <div className="flex items-center gap-2">
+                  <p className="text-sm font-medium text-slate-950">Vendor quotation messages</p>
+                  <HelpMark label="Used when owner selects one public vendor quote. Selected vendor receives winner text; all others receive rejection text." />
+                </div>
+                <div className="mt-3 grid gap-3">
+                  <Field>
+                    <FieldLabel>Selected vendor message</FieldLabel>
+                    <Textarea value={settingsForm.vendorQuoteWinnerMessageTemplate} onChange={(event) => setSettingsForm((current) => ({ ...current, vendorQuoteWinnerMessageTemplate: event.target.value ?? "" }))} />
+                    <FieldDescription>Variables: {"{{vendor_name}}"}, {"{{request_title}}"}, {"{{amount}}"}, {"{{currency}}"}</FieldDescription>
+                  </Field>
+                  <Field>
+                    <FieldLabel>Other vendors message</FieldLabel>
+                    <Textarea value={settingsForm.vendorQuoteRejectionMessageTemplate} onChange={(event) => setSettingsForm((current) => ({ ...current, vendorQuoteRejectionMessageTemplate: event.target.value ?? "" }))} />
+                  </Field>
+                </div>
+              </div>
+              <Button type="submit" disabled={saveSettings.isPending}>Save reminder settings</Button>
             </form>
           </CardContent>
         </Card>
@@ -5258,6 +5677,7 @@ export function TenantOwnerTicketsPage() {
                     const unit = ticket.unitId ? unitMap.get(ticket.unitId) : null
                     const tenant = ticket.tenantId ? tenantMap.get(ticket.tenantId) : null
                     const assignedWorker = ticket.assignedTo ? workerMap.get(ticket.assignedTo) : null
+                    const publicTicketUrl = typeof window !== "undefined" ? `${window.location.origin}/public/ticket/${ticket._id}` : `/public/ticket/${ticket._id}`
 
                     return (
                       <TableRow key={ticket._id}>
@@ -5320,6 +5740,29 @@ export function TenantOwnerTicketsPage() {
                             >
                               {assignedWorker ? `Manage: ${assignedWorker.fullName}` : "Manage ticket"}
                             </Button>
+                            <div className="grid grid-cols-2 gap-2">
+                              <Button
+                                type="button"
+                                variant="outline"
+                                className="justify-start"
+                                onClick={async () => {
+                                  await navigator.clipboard.writeText(publicTicketUrl)
+                                  toast.success("Ticket QR link copied")
+                                }}
+                              >
+                                <Copy className="size-4" />
+                                Copy
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                className="justify-start"
+                                onClick={() => downloadQrCode(publicTicketUrl, `${ticket.title.replaceAll(" ", "-").toLowerCase()}-ticket-qr.png`, ticket.title)}
+                              >
+                                <Download className="size-4" />
+                                QR
+                              </Button>
+                            </div>
                           </div>
                         </TableCell>
                       </TableRow>
@@ -5733,6 +6176,18 @@ export function TenantOwnerInspectionsPage() {
 
 export function TenantOwnerSettingsPage() {
   const { data: me, isLoading } = useMeQuery()
+  const brandingSettings = useOrganizationBrandingSettingsQuery(Boolean(me?.organizationId))
+  const notificationSettings = useOwnerNotificationSettingsQuery()
+  const saveNotificationSettings = useOwnerSaveNotificationSettingsMutation()
+  type AuditLogItem = {
+    _id: string
+    action: string
+    entityType: string
+    actorName?: string | null
+    createdAt?: string
+    metadata?: Record<string, unknown>
+  }
+  const [auditLogs, setAuditLogs] = useState<AuditLogItem[]>([])
   const [stripeStatus, setStripeStatus] = useState<{
     configured: boolean
     publishableKeyConfigured: boolean
@@ -5746,7 +6201,20 @@ export function TenantOwnerSettingsPage() {
     publishableKey: "",
     defaultCurrency: "usd",
   })
+  const [brandingForm, setBrandingForm] = useState({
+    logoUrl: "",
+  })
+  const [brandingLogo, setBrandingLogo] = useState<string[]>([])
+  const [reminderForm, setReminderForm] = useState({
+    overdueRentEnabled: false,
+    overdueRentDaysAfterDue: "1",
+    overdueRentRepeatEveryDays: "3",
+    overdueRentMaxSends: "3",
+    inspectionEnabled: false,
+    recurringMaintenanceEnabled: false,
+  })
   const [stripeBusy, setStripeBusy] = useState(false)
+  const [brandingBusy, setBrandingBusy] = useState(false)
 
   useEffect(() => {
     let active = true
@@ -5775,6 +6243,43 @@ export function TenantOwnerSettingsPage() {
 
     if (me?.organizationId) {
       loadStripeStatus()
+    }
+
+    return () => {
+      active = false
+    }
+  }, [me?.organizationId])
+
+  useEffect(() => {
+    if (!brandingSettings.data) return
+    setBrandingForm({
+      logoUrl: brandingSettings.data.logoUrl ?? "",
+    })
+    setBrandingLogo(brandingSettings.data.logoUrl ? [brandingSettings.data.logoUrl] : [])
+  }, [brandingSettings.data])
+
+  useEffect(() => {
+    if (!notificationSettings.data) return
+    setReminderForm({
+      overdueRentEnabled: Boolean(notificationSettings.data.overdueRentEnabled),
+      overdueRentDaysAfterDue: String(notificationSettings.data.overdueRentDaysAfterDue ?? 1),
+      overdueRentRepeatEveryDays: String(notificationSettings.data.overdueRentRepeatEveryDays ?? 3),
+      overdueRentMaxSends: String(notificationSettings.data.overdueRentMaxSends ?? 3),
+      inspectionEnabled: Boolean(notificationSettings.data.inspectionEnabled),
+      recurringMaintenanceEnabled: Boolean(notificationSettings.data.recurringMaintenanceEnabled),
+    })
+  }, [notificationSettings.data])
+
+  useEffect(() => {
+    let active = true
+    const loadAuditLogs = async () => {
+      const [data] = await getRequest<ApiSuccessResponse<{ data?: AuditLogItem[] }>>("/audit-log?limit=12")
+      if (!active) return
+      setAuditLogs(data?.data?.data ?? [])
+    }
+
+    if (me?.organizationId) {
+      loadAuditLogs()
     }
 
     return () => {
@@ -5839,6 +6344,121 @@ export function TenantOwnerSettingsPage() {
               <div className="rounded-xl border p-4">
                 Tenant owner can add many properties under one organization.
               </div>
+            </CardContent>
+          </Card>
+
+          <Card className="shadow-none xl:col-span-2">
+            <CardHeader>
+              <CardTitle>White-label</CardTitle>
+              <CardDescription>Brand public QR payment and ticket pages for this owner.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form
+                className="space-y-4"
+                onSubmit={async (event) => {
+                  event.preventDefault()
+                  setBrandingBusy(true)
+                  const payload = { logoUrl: brandingLogo[0] || brandingForm.logoUrl || "" }
+                  const [data, error] = await patchRequest<ApiSuccessResponse<typeof brandingForm>, typeof brandingForm>(
+                    "/organization/my/branding-settings",
+                    payload
+                  )
+                  setBrandingBusy(false)
+                  if (error || !data?.data) {
+                    toast.error(error?.message ?? "Branding save failed")
+                    return
+                  }
+                  setBrandingForm(data.data)
+                  setBrandingLogo(data.data.logoUrl ? [data.data.logoUrl] : [])
+                  toast.success("Branding saved")
+                }}
+              >
+                <FieldGroup>
+                  {brandingLogo[0] ? (
+                    <img src={brandingLogo[0]} alt="Organization logo" className="size-20 rounded-xl border object-contain p-2" />
+                  ) : null}
+                  <UploadCollectionField label="Organization logo" accept="image/*" kind="image" values={brandingLogo} onChange={(values) => setBrandingLogo(values.slice(-1))} />
+                </FieldGroup>
+                <Button type="submit" disabled={brandingBusy || !me?.organizationId}>{brandingBusy ? "Saving..." : "Save branding"}</Button>
+              </form>
+            </CardContent>
+          </Card>
+
+          <Card className="shadow-none xl:col-span-2">
+            <CardHeader>
+              <CardTitle>Automated reminders</CardTitle>
+              <CardDescription>Messages send only when enabled here.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form
+                className="space-y-4"
+                onSubmit={(event) => {
+                  event.preventDefault()
+                  saveNotificationSettings.mutate({
+                    overdueRentEnabled: reminderForm.overdueRentEnabled,
+                    overdueRentDaysAfterDue: Number(reminderForm.overdueRentDaysAfterDue || "1"),
+                    overdueRentRepeatEveryDays: Number(reminderForm.overdueRentRepeatEveryDays || "3"),
+                    overdueRentMaxSends: Number(reminderForm.overdueRentMaxSends || "3"),
+                    overdueRentChannels: notificationSettings.data?.overdueRentChannels?.length ? notificationSettings.data.overdueRentChannels : ["email"],
+                    inspectionEnabled: reminderForm.inspectionEnabled,
+                    inspectionChannels: notificationSettings.data?.inspectionChannels?.length ? notificationSettings.data.inspectionChannels : ["email"],
+                    recurringMaintenanceEnabled: reminderForm.recurringMaintenanceEnabled,
+                    recurringMaintenanceChannels: notificationSettings.data?.recurringMaintenanceChannels?.length ? notificationSettings.data.recurringMaintenanceChannels : ["email"],
+                  })
+                }}
+              >
+                <div className="grid gap-3 md:grid-cols-3">
+                  <div className="rounded-xl border p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="font-medium text-slate-950">Rent reminders</p>
+                      <Switch checked={reminderForm.overdueRentEnabled} onCheckedChange={(checked) => setReminderForm((current) => ({ ...current, overdueRentEnabled: checked ?? false }))} />
+                    </div>
+                    <div className="mt-4 grid gap-3">
+                      <Field><FieldLabel>Start after due date</FieldLabel><Input type="number" min="0" value={reminderForm.overdueRentDaysAfterDue} onChange={(event) => setReminderForm((current) => ({ ...current, overdueRentDaysAfterDue: event.target.value ?? "1" }))} /></Field>
+                      <Field><FieldLabel>Days between reminders</FieldLabel><Input type="number" min="1" value={reminderForm.overdueRentRepeatEveryDays} onChange={(event) => setReminderForm((current) => ({ ...current, overdueRentRepeatEveryDays: event.target.value ?? "3" }))} /></Field>
+                      <Field><FieldLabel>Max reminders</FieldLabel><Select value={reminderForm.overdueRentMaxSends} onValueChange={(value) => setReminderForm((current) => ({ ...current, overdueRentMaxSends: value ?? "3" }))}><SelectTrigger className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectGroup>{["1", "2", "3", "4", "5", "6"].map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}</SelectGroup></SelectContent></Select></Field>
+                    </div>
+                  </div>
+                  <div className="rounded-xl border p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="font-medium text-slate-950">Inspection assigned</p>
+                      <Switch checked={reminderForm.inspectionEnabled} onCheckedChange={(checked) => setReminderForm((current) => ({ ...current, inspectionEnabled: checked ?? false }))} />
+                    </div>
+                    <p className="mt-3 text-sm text-slate-600">Worker gets message when inspection assigned.</p>
+                  </div>
+                  <div className="rounded-xl border p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="font-medium text-slate-950">Recurring maintenance</p>
+                      <Switch checked={reminderForm.recurringMaintenanceEnabled} onCheckedChange={(checked) => setReminderForm((current) => ({ ...current, recurringMaintenanceEnabled: checked ?? false }))} />
+                    </div>
+                    <p className="mt-3 text-sm text-slate-600">Worker gets message when recurring work assigned.</p>
+                  </div>
+                </div>
+                <Button type="submit" disabled={saveNotificationSettings.isPending}>{saveNotificationSettings.isPending ? "Saving..." : "Save reminders"}</Button>
+              </form>
+            </CardContent>
+          </Card>
+
+          <Card className="shadow-none xl:col-span-2">
+            <CardHeader>
+              <CardTitle>Audit log</CardTitle>
+              <CardDescription>Recent important changes and public QR actions.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {auditLogs.length ? auditLogs.map((item) => (
+                <div key={item._id} className="rounded-xl border p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex flex-wrap gap-2">
+                      <Badge>{item.action}</Badge>
+                      <Badge variant="outline">{item.entityType}</Badge>
+                    </div>
+                    <p className="text-xs text-slate-500">{formatDateLabel(item.createdAt, "Unknown time")}</p>
+                  </div>
+                  <p className="mt-2 text-sm text-slate-700">{item.actorName ?? "System / public QR"}</p>
+                </div>
+              )) : (
+                <div className="rounded-xl border border-dashed p-4 text-sm text-slate-500">No audit logs yet.</div>
+              )}
             </CardContent>
           </Card>
 

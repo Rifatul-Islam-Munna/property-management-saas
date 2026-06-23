@@ -12,6 +12,7 @@ import { AnnouncementModule } from './announcement/announcement.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AssetModule } from './asset/asset.module';
+import { AuditLogModule } from './audit-log/audit-log.module';
 import { BillModule } from './bill/bill.module';
 import { ImageModule } from './image/image.module';
 import { MessagingModule } from './messaging/messaging.module';
@@ -19,7 +20,9 @@ import { NotificationModule } from './notification/notification.module';
 import { OrganizationModule } from './organization/organization.module';
 import { PlanDocModule } from './plan-doc/plan-doc.module';
 import { PropertyModule } from './property/property.module';
+import { PublicRequestModule } from './public-request/public-request.module';
 import { RecurringMaintenanceModule } from './recurring-maintenance/recurring-maintenance.module';
+import { StaffModule } from './staff/staff.module';
 import { SubscriptionModule } from './subscription/subscription.module';
 import { TechnicianModule } from './technician/technician.module';
 import { TenantModule } from './tenant/tenant.module';
@@ -55,6 +58,7 @@ import { WorkOrderModule } from './work-order/work-order.module';
     AiModule,
     AnalyticsModule,
     AnnouncementModule,
+    AuditLogModule,
     AssetModule,
     BillModule,
     FinanceEntryModule,
@@ -65,7 +69,9 @@ import { WorkOrderModule } from './work-order/work-order.module';
     OrganizationModule,
     PlanDocModule,
     PropertyModule,
+    PublicRequestModule,
     RecurringMaintenanceModule,
+    StaffModule,
     SubscriptionModule,
     TechnicianModule,
     TenantModule,

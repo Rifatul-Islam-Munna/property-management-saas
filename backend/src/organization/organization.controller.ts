@@ -19,6 +19,7 @@ import { SuccessResponseDto } from 'src/lib/success-response.dto';
 import { UserRole } from 'src/user/entities/user.entity';
 import { CreateOrganizationDto } from './dto/create-organization.dto';
 import { QueryOrganizationDto } from './dto/query-organization.dto';
+import { SaveBrandingSettingsDto } from './dto/save-branding-settings.dto';
 import { SaveStripeSettingsDto } from './dto/save-stripe-settings.dto';
 import { UpdateOrganizationDto } from './dto/update-organization.dto';
 import { OrganizationService } from './organization.service';
@@ -61,8 +62,22 @@ export class OrganizationController {
   @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.TETENTWONER)
   @Patch('my/stripe-settings')
   async saveMyStripeSettings(@Req() req: ExpressRequest, @Body() dto: SaveStripeSettingsDto): Promise<SuccessResponseDto<any>> {
-    const data = await this.organizationService.saveStripeSettings(req.user.organizationId ?? '', dto);
+    const data = await this.organizationService.saveStripeSettings(req.user.organizationId ?? '', req.user, dto);
     return new SuccessResponseDto(200, 'Stripe settings saved', data);
+  }
+
+  @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.TETENTWONER)
+  @Get('my/branding-settings')
+  async getMyBrandingSettings(@Req() req: ExpressRequest): Promise<SuccessResponseDto<any>> {
+    const data = await this.organizationService.getBrandingSettings(req.user.organizationId ?? '');
+    return new SuccessResponseDto(200, 'Branding settings fetched', data);
+  }
+
+  @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.TETENTWONER)
+  @Patch('my/branding-settings')
+  async saveMyBrandingSettings(@Req() req: ExpressRequest, @Body() dto: SaveBrandingSettingsDto): Promise<SuccessResponseDto<any>> {
+    const data = await this.organizationService.saveBrandingSettings(req.user.organizationId ?? '', req.user, dto);
+    return new SuccessResponseDto(200, 'Branding settings saved', data);
   }
 
   @Get(':id')
