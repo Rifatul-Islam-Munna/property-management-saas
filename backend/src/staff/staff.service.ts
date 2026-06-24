@@ -148,7 +148,9 @@ export class StaffService {
     const staff = await this.staffModel.findOne({ _id: id, organizationId });
     if (!staff) throw new NotFoundException('Staff not found');
 
-    const channels = dto.channels?.length ? dto.channels : ['email'];
+    const channels: Array<'email' | 'sms'> = dto.channels?.length
+      ? dto.channels
+      : ['email'];
     if (channels.includes('email') && staff.email) {
       this.mailDeliveryService.sendFireAndForget({ to: staff.email, subject: dto.subject ?? 'Message from property owner', body: dto.body });
     }
